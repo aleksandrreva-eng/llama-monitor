@@ -1,0 +1,8 @@
+# Normalize line endings: store as LF, check out as LF on every platform.
+* text=auto eol=lf
+
+# Binary assets — never diff/merge these.
+*.png binary
+*.ico binary
+*.icns binary
+*.msi binary
