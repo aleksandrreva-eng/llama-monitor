@@ -55,7 +55,7 @@ pub fn log_path() -> PathBuf {
 }
 
 /// `%LOCALAPPDATA%\llama-monitor`, created on demand.
-fn data_dir() -> Option<PathBuf> {
+pub(crate) fn data_dir() -> Option<PathBuf> {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))?;

@@ -142,9 +142,10 @@ fn make(host: Ipv4Addr, port: u16, kind: ServerKind, url: &str) -> DiscoveredSer
 /// capped at `timeout_ms` (default 9 s); whatever has been found so far is
 /// returned when the budget is exceeded.
 #[tauri::command]
-pub async fn scan_lan(timeout_ms: Option<u64>) -> Vec<DiscoveredServer> {
+#[allow(non_snake_case)]
+pub async fn scan_lan(timeoutMs: Option<u64>) -> Vec<DiscoveredServer> {
     let hosts = candidate_hosts();
-    let budget = Duration::from_millis(timeout_ms.unwrap_or(9000).max(2000));
+    let budget = Duration::from_millis(timeoutMs.unwrap_or(9000).max(2000));
     let semaphore = std::sync::Arc::new(Semaphore::new(200));
     let mut set = tokio::task::JoinSet::new();
     let mut results: Vec<DiscoveredServer> = Vec::new();

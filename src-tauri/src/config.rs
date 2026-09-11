@@ -225,20 +225,39 @@ impl Settings {
             .unwrap_or_else(|| "http://127.0.0.1:8080/v1".to_string())
     }
 
-    /// Path to the settings file (next to the executable).
+    /// Path to the settings file.
+    ///
+    /// The MSI installs into `Program Files`, which is **not writable** by a
+    /// non-elevated process — writing `llama-monitor-settings.json` there fails
+    /// with os error 5 ("Отказано в доступе"). So settings live under
+    /// `%LOCALAPPDATA%\llama-monitor\` (next to the log file), the canonical
+    /// per-user writable location. A portable (unzip-and-run) copy keeps a
+    /// fallback next to the executable when the data dir is unavailable.
     pub fn settings_path() -> PathBuf {
-        if let Some(exe) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-            exe.join("llama-monitor-settings.json")
-        } else {
-            PathBuf::from("llama-monitor-settings.json")
+        if let Some(dir) = crate::logging::data_dir() {
+            return dir.join("llama-monitor-settings.json");
         }
+        if let Some(exe) = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        {
+            return exe.join("llama-monitor-settings.json");
+        }
+        PathBuf::from("llama-monitor-settings.json")
     }
 
     /// Load settings, creating defaults if the file is missing.
+    ///
+    /// The writable data dir (`%LOCALAPPDATA%\llama-monitor`) is preferred. A
+    /// legacy settings file that still sits next to the executable (older
+    /// builds, or a portable copy) is read-only at runtime in `Program Files`,
+    /// but reading it is allowed — so if no data-dir file exists yet we read the
+    /// legacy file and re-persist into the writable location.
     pub fn load() -> Settings {
+        // 1. Writable data-dir file (the normal case going forward).
         let path = Self::settings_path();
-        match std::fs::read_to_string(&path) {
-            Ok(json) => {
+        if path.exists() {
+            if let Ok(json) = std::fs::read_to_string(&path) {
                 let mut s: Settings = serde_json::from_str(&json).unwrap_or_else(|e| {
                     log::warn!("settings parse error, using defaults: {e}");
                     Settings::default()
@@ -246,14 +265,32 @@ impl Settings {
                 if s.migrate() {
                     let _ = s.save();
                 }
-                s
-            }
-            Err(_) => {
-                let s = Settings::default();
-                let _ = s.save();
-                s
+                return s;
             }
         }
+        // 2. Legacy file beside the executable (read-only is fine for reading).
+        if let Some(exe_dir) = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        {
+            let legacy = exe_dir.join("llama-monitor-settings.json");
+            if legacy.exists() {
+                if let Ok(json) = std::fs::read_to_string(&legacy) {
+                    let mut s: Settings = serde_json::from_str(&json).unwrap_or_else(|e| {
+                        log::warn!("legacy settings parse error, using defaults: {e}");
+                        Settings::default()
+                    });
+                    if s.migrate() {
+                        let _ = s.save();
+                    }
+                    return s;
+                }
+            }
+        }
+        // 3. No file anywhere → defaults, persisted into the writable location.
+        let s = Settings::default();
+        let _ = s.save();
+        s
     }
 
     /// Bring an older settings file up to date. Returns `true` if anything changed
@@ -310,6 +347,9 @@ impl Settings {
     /// Persist settings to disk.
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::settings_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(path, json)?;
         Ok(())

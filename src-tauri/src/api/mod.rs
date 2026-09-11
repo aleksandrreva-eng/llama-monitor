@@ -47,19 +47,20 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 pub fn save_settings(
     app: AppHandle,
     state: State<AppState>,
-    incoming: Settings,
+    settings: Settings,
 ) -> Result<(), String> {
-    let autorun = incoming.autorun;
-    let verbose = incoming.verbose_logging;
+    let autorun = settings.autorun;
+    let verbose = settings.verbose_logging;
     let old_hotkey = state.settings.lock().unwrap().hotkey.clone();
-    let new_hotkey = incoming.hotkey.clone();
+    let new_hotkey = settings.hotkey.clone();
 
     // `get_settings` returns a `public_view` where every api key is masked as
     // "***". If a profile/setting comes back still masked, keep the real secret
     // instead of overwriting it with the placeholder. Only an explicit,
     // non-"***" value replaces the stored key; an empty string clears it.
     let existing = state.settings.lock().unwrap().clone();
-    let mut settings = incoming;
+    // Rebind as mutable (Tauri command params must not be declared `mut`).
+    let mut settings = settings;
     if settings.api_key.as_deref() == Some("***") {
         settings.api_key = existing.api_key.clone();
     }
