@@ -33,6 +33,58 @@
     logStore.set(lines.length ? lines : ["(лог пуст)"]);
   }
 
+  // Copy the current log to the clipboard (with a legacy fallback for webviews
+  // that block the async Clipboard API).
+  let copyMsg = "";
+  let copyTimer = null;
+
+  function flashCopy(msg) {
+    copyMsg = msg;
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => (copyMsg = ""), 2500);
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } catch (e) {
+      throw e;
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+
+  async function copyLogs() {
+    const text = ($logStore && $logStore.length ? $logStore.join("\n") : "").trim();
+    if (!text) {
+      flashCopy("Лог пуст — копировать нечего");
+      return;
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        fallbackCopy(text);
+      }
+      flashCopy("Скопировано в буфер обмена");
+    } catch (e) {
+      try {
+        fallbackCopy(text);
+        flashCopy("Скопировано в буфер обмена");
+      } catch (e2) {
+        flashCopy("Не удалось скопировать: " + e2);
+      }
+    }
+  }
+
   function apply(patch) {
     saveSettings(patch);
   }
@@ -318,6 +370,7 @@
     <button class="btn danger" on:click={resetSettings}>Сбросить настройки</button>
     {#if showLogs}
       <button class="btn" on:click={refreshLogs}>Обновить</button>
+      <button class="btn" on:click={copyLogs}>Копировать</button>
       <button class="btn" on:click={async () => { await clearLogs(); logStore.set(["(лог очищен)"]); }}>Очистить логи</button>
     {/if}
   </div>
@@ -328,6 +381,9 @@
         <div class="log-line">{line}</div>
       {/each}
     </div>
+    {#if copyMsg}
+      <p class="copy-msg">{copyMsg}</p>
+    {/if}
   {/if}
 </div>
 
@@ -596,10 +652,19 @@
     font-family: monospace;
     font-size: 11px;
     color: var(--text-secondary);
+    /* Counter the global `user-select: none` so log text can be selected. */
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .log-line {
     padding: 1px 0;
     white-space: pre-wrap;
+  }
+
+  .copy-msg {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--good);
   }
 </style>
