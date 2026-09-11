@@ -149,10 +149,18 @@ fn main() -> anyhow::Result<()> {
                 .build(app)?;
 
             // Route tray clicks to the frontend so it can toggle the window.
+            // Left-click / double-click the tray icon to restore the widget
+            // (emit "show" which the Svelte side turns into restoreWindow).
             {
                 let _ = tray.on_tray_icon_event(|tray, event| {
                     let handle = tray.app_handle();
-                    let _ = handle.emit("tray:event", format!("{:?}", event));
+                    if matches!(
+                        event,
+                        tauri::tray::TrayIconEvent::Click { .. }
+                            | tauri::tray::TrayIconEvent::DoubleClick { .. }
+                    ) {
+                        let _ = handle.emit("tray:event", "show");
+                    }
                 });
             }
             {

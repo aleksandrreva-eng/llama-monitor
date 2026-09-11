@@ -62,9 +62,20 @@ export async function initTauri() {
       state.set(mergeState(e.payload));
     });
     await listen("tray:event", (e) => {
-      const handler = trayHandlers.get(e.payload);
-      if (handler) {
-        handler(e.payload);
+      const payload = e.payload as string;
+      pushLog(`Tray event: ${payload}`);
+      
+      if (payload.includes("show")) {
+        const handler = trayHandlers.get("show");
+        if (handler) handler("show");
+      } else if (payload.includes("hide")) {
+        const handler = trayHandlers.get("hide");
+        if (handler) handler("hide");
+      } else {
+        const handler = trayHandlers.get(payload);
+        if (handler) {
+          handler(payload);
+        }
       }
     });
   } catch (err) {
