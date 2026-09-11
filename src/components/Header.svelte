@@ -8,7 +8,16 @@
   export let onHideToTray;
 
   $: s = $state;
-  $: label = s?.serverLabel || ($settings ? `${$settings.server_host}:${$settings.server_port}` : "llama.cpp");
+  // Fallback label when the backend hasn't yet reported one: derive it from the
+  // active server profile (label, else url) instead of the legacy host:port.
+  $: activeLabel = (() => {
+    const st = $settings;
+    if (!st || !st.servers || !st.servers.length) return null;
+    const id = st.active_server_id || st.servers[0].id;
+    const p = st.servers.find((x) => x.id === id);
+    return p ? (p.label || p.url) : null;
+  })();
+  $: label = s?.serverLabel || activeLabel || "llama.cpp";
 
   const STATUS_CLASS = {
     connected: "connected",
@@ -45,7 +54,7 @@
     if (event.target.closest("button")) return;
     dragging = true;
     try {
-      await getCurrentWindow().dragWindow();
+      await getCurrentWindow().startDragging();
     } catch (err) {
       console.warn("drag failed:", err);
     }

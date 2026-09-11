@@ -43,11 +43,33 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 
 /// Save settings to disk and sync side-effects (autostart, hotkey).
 #[tauri::command]
-pub fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<(), String> {
-    let autorun = settings.autorun;
-    let verbose = settings.verbose_logging;
+pub fn save_settings(
+    app: AppHandle,
+    state: State<AppState>,
+    incoming: Settings,
+) -> Result<(), String> {
+    let autorun = incoming.autorun;
+    let verbose = incoming.verbose_logging;
     let old_hotkey = state.settings.lock().unwrap().hotkey.clone();
-    let new_hotkey = settings.hotkey.clone();
+    let new_hotkey = incoming.hotkey.clone();
+
+    // `get_settings` returns a `public_view` where every api key is masked as
+    // "***". If a profile/setting comes back still masked, keep the real secret
+    // instead of overwriting it with the placeholder. Only an explicit,
+    // non-"***" value replaces the stored key; an empty string clears it.
+    let existing = state.settings.lock().unwrap().clone();
+    let mut settings = incoming;
+    if settings.api_key.as_deref() == Some("***") {
+        settings.api_key = existing.api_key.clone();
+    }
+    for p in settings.servers.iter_mut() {
+        if let Some(old_p) = existing.servers.iter().find(|x| x.id == p.id) {
+            if p.api_key.as_deref() == Some("***") {
+                p.api_key = old_p.api_key.clone();
+            }
+        }
+    }
+
     {
         let mut guard = state.settings.lock().unwrap();
         *guard = settings;

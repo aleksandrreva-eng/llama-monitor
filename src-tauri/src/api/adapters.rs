@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api::types::*;
+use crate::config::ServerKind;
 
 /// Raw metrics response (Prometheus text format is handled separately).
 #[derive(Debug, Deserialize)]
@@ -30,6 +31,10 @@ pub struct ModelEntry {
     pub path: Option<String>,
     pub content_type: Option<String>,
     pub n_ctx: Option<u64>,
+    /// OpenAI-compatible `/v1/models` reports the context window as
+    /// `context_length` (not `n_ctx`); cloud providers (OpenAI/OpenRouter/Groq)
+    /// only populate this field. `extract_model_entry_metric` falls back to it.
+    pub context_length: Option<u64>,
     pub loaded: Option<bool>,
 }
 
@@ -420,6 +425,221 @@ impl SlotsInfo {
             None
         }
     }
+}
+
+/// Detect the upstream engine from a raw response so [`fetch_snapshot`] can pick
+/// the right adapter.
+///
+/// Detection is heuristic and based on the *first* signal we see:
+/// - A Prometheus blob containing `vllm:` metrics → [`ServerKind::Vllm`].
+/// - A Prometheus blob containing `llamacpp:` metrics → [`ServerKind::Local`].
+/// - An Ollama `/api/ps` array (each entry has a `name` + `context_length`) → [`ServerKind::Ollama`].
+/// - Otherwise → [`ServerKind::Cloud`] (OpenAI-compatible `/v1/models`).
+///
+/// `context_length` is the OpenAI model field for the model's context window;
+/// it is populated for cloud responses and for Ollama entries that carry it.
+pub fn detect_kind_from_metrics(text: &str) -> Option<ServerKind> {
+    if text.contains("vllm:") {
+        Some(ServerKind::Vllm)
+    } else if text.contains("llamacpp:") {
+        Some(ServerKind::Local)
+    } else {
+        None
+    }
+}
+
+/// Detect Ollama from the `/api/ps` payload: an array whose entries are running
+/// models with a `name` and an `info` object carrying `context_length`.
+pub fn detect_kind_from_ps(value: &Value) -> Option<ServerKind> {
+    if let Some(arr) = value.as_array() {
+        if let Some(entry) = arr.first() {
+            if entry.get("name").and_then(|v| v.as_str()).is_some() {
+                return Some(ServerKind::Ollama);
+            }
+        }
+    }
+    None
+}
+
+/// A vLLM KV-cache occupancy reading (used vs. total tokens in the KV cache).
+#[derive(Debug, Clone)]
+pub struct VllmContext {
+    pub used: Option<u64>,
+    pub total: Option<u64>,
+    pub percent: Option<f64>,
+}
+
+/// Parse vLLM `/metrics` (Prometheus text) into a context metric.
+///
+/// vLLM exposes `vllm:kv_cache_usage_sys` (used system KV tokens) and
+/// `vllm:kv_cache_usage_max` (max KV tokens for the engine). The ratio of the
+/// two is the context occupancy. We do NOT know the model's configured context
+/// window from these counters, so `total` is the engine max, not a model limit.
+pub fn extract_vllm_context(text: &str) -> VllmContext {
+    let map = parse_prometheus(text);
+    let used = find_f64(&map, &["vllm:kv_cache_usage_sys", "vllm:kv_cache_used"]);
+    let total = find_f64(&map, &["vllm:kv_cache_usage_max", "vllm:kv_cache_max"]);
+    let (used, total) = (used, total);
+    let percent = match (used, total) {
+        (Some(u), Some(t)) if t > 0.0 => Some((u / t).clamp(0.0, 1.0)),
+        _ => None,
+    };
+    VllmContext {
+        used: used.map(|v| v as u64),
+        total: total.map(|v| v as u64),
+        percent,
+    }
+}
+
+/// Parse vLLM `/metrics` into prefill / generation speeds.
+///
+/// - Prefill: `vllm:time_to_first_token_seconds` (seconds from request to first
+///   output token).
+/// - Generation: `vllm:inter_token_latency_seconds` (per-token latency).
+///
+/// We invert each latency (1 / seconds) into tok/s so the UI keeps its tok/s
+/// contract. Guarded against zero latency.
+pub fn extract_vllm_speeds(text: &str) -> (SpeedMetric, SpeedMetric) {
+    let map = parse_prometheus(text);
+    let ttft = find_f64(&map, &["vllm:time_to_first_token_seconds", "vllm:ttft_s"]);
+    let itl = find_f64(&map, &["vllm:inter_token_latency_seconds", "vllm:itl_s"]);
+
+    let prefill = rate_speed(ttft);
+    let generation = rate_speed(itl);
+
+    let split = prefill.current.is_some() && generation.current.is_some();
+    (
+        SpeedMetric {
+            split_available: split,
+            ..prefill
+        },
+        SpeedMetric {
+            split_available: split,
+            ..generation
+        },
+    )
+}
+
+/// Invert a per-token latency (seconds) into tok/s, guarding against zero.
+fn rate_speed(latency: Option<f64>) -> SpeedMetric {
+    match latency {
+        Some(v) if v > 0.0 => SpeedMetric {
+            current: Some(1.0 / v),
+            available: true,
+            ..Default::default()
+        },
+        _ => SpeedMetric::default(),
+    }
+}
+
+/// Extract the model name and context window from an Ollama `/api/ps` entry.
+///
+/// Ollama reports each running model with a `name` and an `info` object that
+/// may contain `context_length` (the model's configured window).
+pub fn extract_ollama_model(entry: &Value) -> ModelMetric {
+    let info = entry.get("info").and_then(|v| v.as_object());
+    let context_size = info
+        .and_then(|i| i.get("context_length"))
+        .and_then(|v| v.as_u64())
+        .or_else(|| entry.get("context_length").and_then(|v| v.as_u64()));
+    let name = entry
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    ModelMetric {
+        name,
+        context_size,
+        loaded: true,
+        quantization: info
+            .and_then(|i| i.get("quantize_level"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        path: None,
+        version: None,
+    }
+}
+
+/// Extract the model name and context window from an OpenAI `/v1/models` entry.
+///
+/// OpenAI-compatible servers list `context_length` (the model's window) on each
+/// model object. Cloud providers do NOT expose live context/speed, so we only
+/// populate name + context_size + loaded.
+pub fn extract_cloud_model(entry: &Value) -> ModelMetric {
+    let name = entry
+        .get("id")
+        .or_else(|| entry.get("name"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let context_size = entry
+        .get("context_length")
+        .or_else(|| entry.get("contextSize"))
+        .and_then(|v| v.as_u64());
+    ModelMetric {
+        name,
+        context_size,
+        loaded: false,
+        quantization: None,
+        path: None,
+        version: None,
+    }
+}
+
+/// Extract model info from a deserialized [`ModelEntry`] (OpenAI `/v1/models`).
+pub fn extract_model_entry_metric(entry: &ModelEntry) -> ModelMetric {
+    ModelMetric {
+        name: entry.id.clone().or_else(|| entry.name.clone()).or_else(|| entry.model.clone()),
+        // llama.cpp/vLLM expose the window as `n_ctx`; OpenAI-compatible clouds
+        // use `context_length`. Take whichever the upstream actually provides.
+        context_size: entry.n_ctx.or(entry.context_length),
+        loaded: entry.loaded.unwrap_or(false),
+        quantization: entry.content_type.clone(),
+        path: entry.path.clone(),
+        version: None,
+    }
+}
+
+/// Parse an Ollama `/api/ps` array: returns the running model + context usage.
+///
+/// Ollama reports how many context tokens each model currently has loaded via
+/// the `context` field (used) — when present. `total` comes from `context_length`
+/// if the entry carries it.
+pub fn parse_ollama_ps(value: &Value) -> (Option<ModelMetric>, Option<ContextMetric>) {
+    let arr = match value.as_array() {
+        Some(a) => a,
+        None => return (None, None),
+    };
+    let first = match arr.first() {
+        Some(e) => e,
+        None => return (None, None),
+    };
+    let model = extract_ollama_model(first);
+
+    // Ollama's `context` field (in the entry) is the number of context tokens
+    // currently loaded for that model.
+    let used = first.get("context").and_then(|v| v.as_u64());
+    let total = model.context_size;
+    let ctx = match (used, total) {
+        (Some(u), Some(t)) if t > 0 => {
+            let remaining = t.saturating_sub(u);
+            let percent = (u as f64 / t as f64).clamp(0.0, 1.0);
+            Some(ContextMetric {
+                total: Some(t),
+                used: Some(u),
+                remaining: Some(remaining),
+                percent: Some(percent),
+                available: true,
+            })
+        }
+        (None, Some(t)) if t > 0 => Some(ContextMetric {
+            total: Some(t),
+            used: None,
+            remaining: None,
+            percent: None,
+            available: true,
+        }),
+        _ => None,
+    };
+    (Some(model), ctx)
 }
 
 /// Parse the llama.cpp `/slots` array into a [`SlotsInfo`].
@@ -943,5 +1163,110 @@ llamacpp:prompt_seconds_total 0
         assert_eq!(info.context.used, Some(100));
         assert_eq!(info.context.remaining, Some(0));
         assert_eq!(info.context.percent, Some(1.0));
+    }
+
+    // --- vLLM / Ollama / Cloud adapters (multi-server feature) ---------------
+
+    #[test]
+    fn detects_vllm_from_metrics_prefix() {
+        assert_eq!(
+            detect_kind_from_metrics("# HELP vllm:kv_cache_usage_sys"),
+            Some(ServerKind::Vllm)
+        );
+        assert_eq!(
+            detect_kind_from_metrics("# HELP llamacpp:prompt_tokens_total"),
+            Some(ServerKind::Local)
+        );
+        assert_eq!(detect_kind_from_metrics("# just some help"), None);
+    }
+
+    #[test]
+    fn detects_ollama_from_ps_array() {
+        let v = json!([{"name":"llama3.1","info":{"model":"meta-llama/..."}}]);
+        assert_eq!(detect_kind_from_ps(&v), Some(ServerKind::Ollama));
+        // A non-array or nameless payload is not Ollama.
+        assert_eq!(detect_kind_from_ps(&json!({"ok":true})), None);
+    }
+
+    #[test]
+    fn vllm_context_ratio_is_clamped() {
+        let text = "\
+# TYPE vllm:kv_cache_usage_sys gauge
+vllm:kv_cache_usage_sys 8000
+# TYPE vllm:kv_cache_usage_max gauge
+vllm:kv_cache_usage_max 32768
+";
+        let c = extract_vllm_context(text);
+        assert_eq!(c.used, Some(8000));
+        assert_eq!(c.total, Some(32768));
+        assert!((c.percent.unwrap() - 8000.0 / 32768.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn vllm_context_missing_fields_is_unavailable() {
+        let c = extract_vllm_context("# no metrics here\n");
+        assert!(c.percent.is_none());
+    }
+
+    #[test]
+    fn vllm_speeds_invert_latency_to_tok_per_second() {
+        let text = "\
+vllm:time_to_first_token_seconds 0.2
+vllm:inter_token_latency_seconds 0.05
+";
+        let (prefill, generation) = extract_vllm_speeds(text);
+        assert!((prefill.current.unwrap() - 5.0).abs() < 1e-9); // 1 / 0.2
+        assert!((generation.current.unwrap() - 20.0).abs() < 1e-9); // 1 / 0.05
+        assert!(prefill.split_available);
+    }
+
+    #[test]
+    fn vllm_speeds_zero_latency_is_unavailable() {
+        let text = "vllm:time_to_first_token_seconds 0\n";
+        let (prefill, _) = extract_vllm_speeds(text);
+        assert!(!prefill.available);
+    }
+
+    #[test]
+    fn ollama_ps_reports_model_and_context() {
+        let v = json!([
+            {"name":"gemma-2-2b","context_length":8192,
+             "info":{"model":"gemma-2:latest"},"context":2048}
+        ]);
+        let (model, ctx) = parse_ollama_ps(&v);
+        let model = model.unwrap();
+        // Compare the owned `Option<String>` (no cross-lifetime `&str` quirk).
+        assert_eq!(model.name, Some("gemma-2-2b".to_string()));
+        let ctx = ctx.unwrap();
+        assert!(ctx.available);
+        assert_eq!(ctx.used, Some(2048));
+        assert_eq!(ctx.total, Some(8192));
+    }
+
+    #[test]
+    fn ollama_ps_context_total_only_when_no_loaded_tokens() {
+        let v = json!([{"name":"qwen","context_length":4096,"info":{}}]);
+        let (_, ctx) = parse_ollama_ps(&v);
+        let c = ctx.unwrap();
+        assert!(c.available);
+        assert_eq!(c.total, Some(4096));
+        assert_eq!(c.used, None, "loaded tokens unknown -> None, not 0");
+    }
+
+    #[test]
+    fn cloud_model_reads_context_length() {
+        let v = json!({"id":"gpt-4o-mini","context_length":128000});
+        let m = extract_cloud_model(&v);
+        assert_eq!(m.name.as_deref(), Some("gpt-4o-mini"));
+        assert_eq!(m.context_size, Some(128000));
+        assert!(!m.loaded);
+    }
+
+    #[test]
+    fn cloud_model_without_context_length_has_no_size() {
+        let v = json!({"id":"gpt-3.5-turbo"});
+        let m = extract_cloud_model(&v);
+        assert_eq!(m.name.as_deref(), Some("gpt-3.5-turbo"));
+        assert_eq!(m.context_size, None);
     }
 }

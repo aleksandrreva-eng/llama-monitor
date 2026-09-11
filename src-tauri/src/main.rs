@@ -76,8 +76,10 @@ fn main() -> anyhow::Result<()> {
         .plugin(shortcut_plugin)
         .manage(app_state)
         .setup(move |app| {
-            // Start the background monitoring service.
-            let service = std::sync::Arc::new(MonitoringService::new(settings.clone()));
+            // Start the background monitoring service. It reads the live
+            // settings (and the active server profile) from AppState every
+            // poll, so switching servers / editing settings needs no restart.
+            let service = std::sync::Arc::new(MonitoringService::new());
             service.spawn(app.app_handle().clone());
 
             // Create the main window.

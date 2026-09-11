@@ -7,18 +7,86 @@
   let showLogs = false;
   $: if (showLogsInitially) showLogs = true;
 
-  // `settings` is `writable(null)` until loadSettings() resolves. The template
-  // below dereferences `$settings.server_host` etc., and `bind:value` on a null
-  // store value throws — so only bind once the settings actually exist.
+  // `settings` is `writable(null)` until loadSettings() resolves. Only bind once
+  // the settings actually exist (a null store value throws on `bind:value`).
   $: ready = $settings != null;
+
+  // --- server profile helpers --------------------------------------------
+  const KIND_LABELS = {
+    local: "llama.cpp",
+    vllm: "vLLM",
+    ollama: "Ollama",
+    cloud: "Облако (OpenAI)",
+  };
+
+  $: servers = ($settings && $settings.servers) || [];
+  $: activeId =
+    $settings && ($settings.active_server_id || (servers[0] && servers[0].id));
+  $: activeProfile = servers.find((p) => p.id === activeId) || null;
+
+  function genId() {
+    return "srv_" + Math.random().toString(36).slice(2, 9);
+  }
 
   async function refreshLogs() {
     const lines = await readLogs(300);
     logStore.set(lines.length ? lines : ["(лог пуст)"]);
   }
 
-  async function apply(patch) {
-    await saveSettings(patch);
+  function apply(patch) {
+    saveSettings(patch);
+  }
+
+  function setActive(id) {
+    apply({ active_server_id: id });
+  }
+
+  function addServer() {
+    const id = genId();
+    const list = servers.concat([
+      {
+        id,
+        label: "Новый сервер",
+        url: "http://127.0.0.1:8080",
+        kind: "local",
+        api_key: null,
+      },
+    ]);
+    apply({ servers: list });
+  }
+
+  function removeServer(id) {
+    let list = servers.filter((p) => p.id !== id);
+    if (list.length === 0) {
+      list = [
+        {
+          id: genId(),
+          label: "Локальный llama.cpp",
+          url: "http://127.0.0.1:8080",
+          kind: "local",
+          api_key: null,
+        },
+      ];
+    }
+    let active = activeId;
+    if (active === id) active = list[0].id;
+    apply({ servers: list, active_server_id: active });
+  }
+
+  function updateServer(id, patch) {
+    const list = servers.map((p) => (p.id === id ? { ...p, ...patch } : p));
+    apply({ servers: list });
+  }
+
+  // API keys arrive masked ("***") from the backend. We only overwrite the
+  // stored key when the user types a real value; clearing the field sends null
+  // (which the backend treats as "no key").
+  function onApiKey(id, value) {
+    updateServer(id, { api_key: value || null });
+  }
+
+  function apiKeyDisplay(key) {
+    return key == null ? "" : key;
   }
 
   function themeClass(t) {
@@ -40,107 +108,146 @@
       <p class="hint" style="padding:12px 0">Загрузка настроек…</p>
     </div>
   {:else}
-  <div class="grid">
-    <label>
-      <span>Адрес сервера</span>
-      <input bind:value={$settings.server_host} placeholder="127.0.0.1"
-             on:input={() => apply({ server_host: $settings.server_host })} />
-    </label>
+  <div class="scroll">
+    <!-- Server profiles -->
+    <section class="section">
+      <div class="section-title">Серверы</div>
+      <div class="server-list">
+        {#each servers as p (p.id)}
+          <div class="server-row" class:active={p.id === activeId}>
+            <button class="server-select" on:click={() => setActive(p.id)} title="Сделать активным">
+              <span class="server-name">{p.label || p.url}</span>
+              <span class="server-kind">{KIND_LABELS[p.kind] || p.kind}</span>
+            </button>
+            <button class="server-del" title="Удалить сервер"
+                    on:click={() => removeServer(p.id)}>✕</button>
+          </div>
+        {/each}
+      </div>
+      <button class="btn add" on:click={addServer}>+ Добавить сервер</button>
+    </section>
 
-    <label>
-      <span>Порт</span>
-      <input type="number" bind:value={$settings.server_port}
-             on:input={() => apply({ server_port: $settings.server_port })} />
-    </label>
+    <!-- Active profile editor -->
+    {#if activeProfile}
+      <section class="section">
+        <div class="section-title">Активный сервер</div>
+        <div class="grid">
+          <label>
+            <span>Имя сервера</span>
+            <input value={activeProfile.label}
+                   on:input={(e) => updateServer(activeProfile.id, { label: e.target.value })}
+                   placeholder="(по умолчанию)" />
+          </label>
 
-    <label>
-      <span>Префикс пути</span>
-      <input bind:value={$settings.base_path} placeholder="(корень сервера)"
-             on:input={() => apply({ base_path: $settings.base_path })} />
-      <small class="hint">Обычно пусто. Для llama.cpp все метрики (/health, /props, /slots) живут в корне; /v1 добавляется автоматически для OpenAI-совместимых запросов.</small>
-    </label>
+          <label>
+            <span>Тип</span>
+            <select value={activeProfile.kind}
+                    on:change={(e) => updateServer(activeProfile.id, { kind: e.target.value })}>
+              <option value="local">llama.cpp (локальный/удалённый)</option>
+              <option value="vllm">vLLM</option>
+              <option value="ollama">Ollama</option>
+              <option value="cloud">Облако (OpenAI)</option>
+            </select>
+          </label>
 
-    <label>
-      <span>Интервал опроса, мс</span>
-      <input type="number" bind:value={$settings.poll_interval_ms}
-             on:input={() => apply({ poll_interval_ms: $settings.poll_interval_ms })} />
-    </label>
+          <label class="wide">
+            <span>URL</span>
+            <input value={activeProfile.url}
+                   on:input={(e) => updateServer(activeProfile.id, { url: e.target.value })}
+                   placeholder="http://127.0.0.1:8080" />
+            <small class="hint">
+              Без суффикса <code>/v1</code>: нативные эндпоинты (для llama.cpp — корень;
+              для Ollama — <code>/api</code>) и OpenAI-совместимый <code>/v1</code>
+              выводятся автоматически.
+            </small>
+          </label>
 
-    <label>
-      <span>Таймаут запроса, мс</span>
-      <input type="number" bind:value={$settings.request_timeout_ms}
-             on:input={() => apply({ request_timeout_ms: $settings.request_timeout_ms })} />
-    </label>
+          <label class="wide">
+            <span>API-ключ (опционально)</span>
+            <input type="password" value={apiKeyDisplay(activeProfile.api_key)}
+                   on:input={(e) => onApiKey(activeProfile.id, e.target.value)}
+                   placeholder="(необязательно)" />
+            <small class="hint">Не попадает в логи. Пустое поле — ключ удаляется.</small>
+          </label>
+        </div>
+      </section>
+    {/if}
 
-    <label>
-      <span>Имя сервера</span>
-      <input bind:value={$settings.server_label} placeholder="(по умолчанию)"
-             on:input={() => apply({ server_label: $settings.server_label })} />
-    </label>
+    <!-- Shared monitoring settings -->
+    <section class="section">
+      <div class="section-title">Опрос и подключение</div>
+      <div class="grid">
+        <label>
+          <span>Интервал опроса, мс</span>
+          <input type="number" bind:value={$settings.poll_interval_ms}
+                 on:input={() => apply({ poll_interval_ms: $settings.poll_interval_ms })} />
+        </label>
 
-    <label>
-      <span>Тема</span>
-      <select bind:value={$settings.theme} on:change={() => apply({ theme: $settings.theme })}>
-        <option value="auto">Авто</option>
-        <option value="light">Светлая</option>
-        <option value="dark">Тёмная</option>
-      </select>
-    </label>
+        <label>
+          <span>Таймаут запроса, мс</span>
+          <input type="number" bind:value={$settings.request_timeout_ms}
+                 on:input={() => apply({ request_timeout_ms: $settings.request_timeout_ms })} />
+        </label>
 
-    <label>
-      <span>Прозрачность окна</span>
-      <input type="range" min="0.5" max="1" step="0.05" bind:value={$settings.window_opacity}
-             on:input={() => apply({ window_opacity: $settings.window_opacity })} />
-    </label>
+        <label>
+          <span>Тема</span>
+          <select bind:value={$settings.theme} on:change={() => apply({ theme: $settings.theme })}>
+            <option value="auto">Авто</option>
+            <option value="light">Светлая</option>
+            <option value="dark">Тёмная</option>
+          </select>
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.default_compact}
-             on:change={() => apply({ default_compact: $settings.default_compact })} />
-      <span>Комактный режим по умолчанию</span>
-    </label>
+        <label>
+          <span>Прозрачность окна</span>
+          <input type="range" min="0.5" max="1" step="0.05" bind:value={$settings.window_opacity}
+                 on:input={() => apply({ window_opacity: $settings.window_opacity })} />
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.always_on_top}
-             on:change={() => apply({ always_on_top: $settings.always_on_top })} />
-      <span>Закрепить поверх всех окон</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.default_compact}
+                 on:change={() => apply({ default_compact: $settings.default_compact })} />
+          <span>Компактный режим по умолчанию</span>
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.minimize_to_tray}
-             on:change={() => apply({ minimize_to_tray: $settings.minimize_to_tray })} />
-      <span>Сворачивать в трей при закрытии</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.always_on_top}
+                 on:change={() => apply({ always_on_top: $settings.always_on_top })} />
+          <span>Закрепить поверх всех окон</span>
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.autorun}
-             on:change={() => apply({ autorun: $settings.autorun })} />
-      <span>Запуск при старте Windows</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.minimize_to_tray}
+                 on:change={() => apply({ minimize_to_tray: $settings.minimize_to_tray })} />
+          <span>Сворачивать в трей при закрытии</span>
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.show_last_update}
-             on:change={() => apply({ show_last_update: $settings.show_last_update })} />
-      <span>Показывать время последнего обновления</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.autorun}
+                 on:change={() => apply({ autorun: $settings.autorun })} />
+          <span>Запуск при старте Windows</span>
+        </label>
 
-    <label class="switch">
-      <input type="checkbox" bind:checked={$settings.verbose_logging}
-             on:change={() => apply({ verbose_logging: $settings.verbose_logging })} />
-      <span>Расширенное логирование</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.show_last_update}
+                 on:change={() => apply({ show_last_update: $settings.show_last_update })} />
+          <span>Показывать время последнего обновления</span>
+        </label>
 
-    <label>
-      <span>Горячая клавиша (показать/скрыть)</span>
-      <input bind:value={$settings.hotkey} placeholder="CmdOrCtrl+Shift+M"
-             on:input={() => apply({ hotkey: $settings.hotkey })} />
-      <span class="hint">Например: CmdOrCtrl+Shift+M. Пустое поле — отключить.</span>
-    </label>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$settings.verbose_logging}
+                 on:change={() => apply({ verbose_logging: $settings.verbose_logging })} />
+          <span>Расширенное логирование</span>
+        </label>
 
-    <label>
-      <span>API-ключ</span>
-      <input type="password" bind:value={$settings.api_key} placeholder="(необязательно)"
-             on:input={() => apply({ api_key: $settings.api_key })} />
-    </label>
+        <label class="wide">
+          <span>Горячая клавиша (показать/скрыть)</span>
+          <input bind:value={$settings.hotkey} placeholder="CmdOrCtrl+Shift+M"
+                 on:input={() => apply({ hotkey: $settings.hotkey })} />
+          <span class="hint">Например: CmdOrCtrl+Shift+M. Пустое поле — отключить.</span>
+        </label>
+      </div>
+    </section>
   </div>
   {/if}
 
@@ -173,7 +280,9 @@
     border-right: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 12px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     z-index: 10;
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
   }
@@ -191,6 +300,95 @@
     border-radius: 6px;
   }
 
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .section {
+    margin-bottom: 14px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-hint);
+    margin-bottom: 8px;
+  }
+
+  .server-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .server-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .server-select {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .server-row.active .server-select {
+    border-color: var(--accent, #0078d4);
+    background: color-mix(in srgb, var(--accent, #0078d4) 12%, var(--bg-primary));
+  }
+
+  .server-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .server-kind {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--text-hint);
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+
+  .server-del {
+    flex-shrink: 0;
+    width: 30px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .server-del:hover {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+
+  .btn.add {
+    width: 100%;
+    border-style: dashed;
+  }
+
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -203,6 +401,10 @@
     gap: 4px;
     font-size: 11px;
     color: var(--text-secondary);
+  }
+
+  label.wide {
+    grid-column: 1 / -1;
   }
 
   label.switch {
@@ -228,6 +430,13 @@
   .hint {
     font-size: 10px;
     color: var(--text-hint);
+  }
+
+  .hint code {
+    font-family: monospace;
+    background: var(--bg-tertiary);
+    padding: 0 3px;
+    border-radius: 3px;
   }
 
   .panel-actions {

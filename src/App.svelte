@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Header from "./components/Header.svelte";
   import ContextBar from "./components/ContextBar.svelte";
   import SpeedBlock from "./components/SpeedBlock.svelte";
@@ -13,11 +13,13 @@
   let showSettings = false;
   let showLogsTab = false;
   let geoTimer = null;
+  let widgetEl = null;
 
   onMount(async () => {
     await initTauri();
     await loadSettings();
     pushLog("app started");
+    fitWindowToContent();
 
     // Persist window geometry (debounced) so position/size survive restarts.
     try {
@@ -41,6 +43,32 @@
   function scheduleGeoSave(fn) {
     if (geoTimer) clearTimeout(geoTimer);
     geoTimer = setTimeout(fn, 400);
+  }
+
+  // Fit the OS window to the widget's natural content height (keeps the
+  // current width so manual horizontal resizes are preserved). The widget is
+  // height:100% of the window, so measure scrollHeight (true content height),
+  // not getBoundingClientRect (which would just echo the window height).
+  async function fitWindowToContent() {
+    if (!widgetEl) return;
+    try {
+      const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+      await tick();
+      const win = getCurrentWindow();
+      const h = Math.round(widgetEl.scrollHeight);
+      const scale = await win.scaleFactor();
+      const cur = await win.innerSize(); // physical pixels
+      const logicalWidth = cur.width / scale;
+      await win.setSize(new LogicalSize(logicalWidth, h));
+    } catch (err) {
+      console.warn("fit to content failed:", err);
+    }
+  }
+
+  // Re-fit whenever expand/collapse changes (and once after mount).
+  $: if (widgetEl) {
+    expanded;
+    fitWindowToContent();
   }
 
   $: if ($ui) {
@@ -129,7 +157,8 @@
 
 <style>
   .widget {
-    width: 420px;
+    width: 100%;
+    height: 100%;
     background: rgba(32, 32, 32, .85);
     backdrop-filter: blur(40px) saturate(160%);
     border-radius: 12px;
@@ -157,5 +186,7 @@
   .body {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 </style>
