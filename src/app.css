@@ -1,0 +1,121 @@
+:root,
+:root[data-theme="light"] {
+  /* Light theme (Win11 Fluent palette) */
+  --bg-primary: #f3f3f3;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #eaeaea;
+  --text-primary: #1b1b1b;
+  --text-secondary: #4a4a4a;
+  --text-hint: #7a7a7a;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+
+  --status-connected: #107c10;
+  --status-connecting: #9d5bd0;
+  --status-disconnected: #d13438;
+  --status-error: #d13438;
+  --status-stale: #8d5b00;
+  --status-unavailable: #a1a1a1;
+
+  --accent: #0067c0;
+  --good: #107c10;
+  --warn: #8d5b00;
+  --bad: #d13438;
+
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --font: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Forced dark mode. */
+:root[data-theme="dark"] {
+  --bg-primary: #202020;
+  --bg-secondary: #2b2b2b;
+  --bg-tertiary: #333333;
+  --text-primary: #f3f3f3;
+  --text-secondary: #c8c8c8;
+  --text-hint: #a0a0a0;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --accent: #60cdff;
+}
+
+/* Auto mode follows the OS setting (unless forced to light). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-primary: #202020;
+    --bg-secondary: #2b2b2b;
+    --bg-tertiary: #333333;
+    --text-primary: #f3f3f3;
+    --text-secondary: #c8c8c8;
+    --text-hint: #a0a0a0;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --accent: #60cdff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Before the theme is applied (or if it ever fails to apply), the webview is
+ * transparent and shows through as black. Fall back to the OS preference so
+ * the very first painted frame already matches the user's theme. */
+html {
+  background-color: #f3f3f3;
+}
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: #202020;
+  }
+}
+:root[data-theme="dark"] {
+  background-color: #202020;
+}
+:root[data-theme="light"] {
+  background-color: #f3f3f3;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+
+button:hover {
+  background: var(--bg-tertiary);
+}
+
+button:active {
+  background: var(--border);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}

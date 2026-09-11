@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>pending</title>
+  <!--
+    Harness: load the REAL built frontend bundle with a stubbed Tauri layer, let it
+    mount, then fire the `tauri://resize` event a few times to exercise App.svelte's
+    onResized handler. The result is written into #result so the headless runner can
+    read it. No WebView2, no network to a real server - fully deterministic.
+  -->
+  <script>
+    // ---- Minimal __TAURI_INTERNALS__ stub (must run before the module bundle) ----
+    window.__cbId = 0;
+    window.__callbacks = {};
+    window.__listeners = {};
+    window.__reported = [];
+    window.__savedSize = null;
+    window.__errors = [];
+    window.addEventListener("error", (e) => {
+      window.__errors.push(String((e.error && e.error.stack) || e.message));
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      window.__errors.push("unhandledrejection: " + String((e.reason && e.reason.stack) || e.reason));
+    });
+    window.__TAURI_INTERNALS__ = {
+      metadata: {
+        currentWindow: { label: "main" },
+        currentWebview: { label: "main" },
+        windows: [{ label: "main" }],
+        webviews: [{ label: "main" }],
+      },
+      transformCallback(fn, once) {
+        const id = ++window.__cbId;
+        window.__callbacks[id] = fn;
+        return id;
+      },
+      async invoke(cmd, args, _opts) {
+        switch (cmd) {
+          case "plugin:event|listen":
+            (window.__listeners[args.event] = window.__listeners[args.event] || []).push(args.handler);
+            return 0; // unlisten id
+          case "get_settings":
+            return {
+              server_host: "127.0.0.1", server_port: 8080, base_path: "",
+              always_on_top: false, theme: "auto", window_opacity: 1,
+              default_compact: true, autorun: false, verbose_logging: false, hotkey: "",
+            };
+          case "report_frontend_error":
+            window.__reported.push(String(args.message));
+            return;
+          case "push_log":
+          case "set_options":
+          case "save_position":
+          case "save_settings":
+          case "reset_settings":
+          case "read_logs":
+          case "get_logs":
+          case "clear_logs":
+            return;
+          case "save_size":
+            window.__savedSize = args;
+            return;
+          default:
+            return;
+        }
+      },
+    };
+    // Fire every listener registered for an event with a Tauri-shaped payload.
+    window.__fire = (event, payload) => {
+      const list = window.__listeners[event] || [];
+      const out = [];
+      for (const id of list) {
+        const cb = window.__callbacks[id];
+        if (cb) { try { cb({ event, payload }); out.push("ok"); } catch (e) { out.push("throw:" + (e && e.message)); throw e; } }
+      }
+      return out;
+    };
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <pre id="result">pending</pre>
+  <script type="module">
+    const bundle = new URLSearchParams(location.search).get("bundle") || "index-CjsjWIF4.js";
+    import("/dist/assets/" + bundle).catch((e) => {
+      document.getElementById("result").textContent = JSON.stringify({ fatal: "import failed: " + (e && e.stack || e) });
+    });
+
+    function finish() {
+      const res = {
+        listeners_resize: (window.__listeners["tauri://resize"] || []).length,
+        listeners_move: (window.__listeners["tauri://move"] || []).length,
+        reported: window.__reported,
+        errors: window.__errors,
+        savedSize: window.__savedSize,
+      };
+      document.getElementById("result").textContent = JSON.stringify(res);
+    }
+
+    // Let onMount run (it awaits invoke) and register the geometry listeners,
+    // then fire several resizes and watch for thrown errors / report_frontend_error.
+    setTimeout(() => {
+      try {
+        const fired = [];
+        for (const [w, h] of [[420, 560], [360, 480], [500, 620]]) {
+          fired.push([w, h, window.__fire("tauri://resize", { width: w, height: h })]);
+        }
+        window.__fired = fired;
+      } catch (e) {
+        window.__errors.push("fire threw: " + (e && e.stack || e));
+      }
+      setTimeout(finish, 900);
+    }, 1500);
+  </script>
+</body>
+</html>
