@@ -45,12 +45,16 @@
     geoTimer = setTimeout(fn, 400);
   }
 
+  // Last content height actually applied to the window. Lets us skip redundant
+  // resizes AND leave a manual height resize alone until the content changes.
+  let lastFitHeight = 0;
+
   // Fit the OS window to the widget's natural content height (keeps the
   // current width so manual horizontal resizes are preserved). The widget is
   // height:100% of the window WITH overflow:hidden, so its scrollHeight just
   // echoes the window height — not the content height. Temporarily release the
-  // fixed height (-> auto) so the element grows to its natural size, measure
-  // that, then restore the CSS-driven 100% after resizing the window.
+  // fixed height (-> auto) so the element grows to its natural size, measure,
+  // then restore BEFORE the async IPC so the flip stays inside one frame.
   async function fitWindowToContent() {
     if (!widgetEl) return;
     try {
@@ -61,16 +65,28 @@
       widgetEl.style.height = "auto";
       await tick();
       const h = Math.round(widgetEl.scrollHeight);
+      widgetEl.style.height = prevHeight; // "" -> CSS height:100%
+      if (Math.abs(h - lastFitHeight) < 2) return; // content unchanged, nothing to do
+      lastFitHeight = h;
       const scale = await win.scaleFactor();
       const cur = await win.innerSize(); // physical pixels
       const logicalWidth = cur.width / scale;
       await win.setSize(new LogicalSize(logicalWidth, h));
-      // Restore the CSS height:100% (now matches the resized window). Empty
-      // string falls back to the stylesheet rule.
-      widgetEl.style.height = prevHeight;
     } catch (err) {
       console.warn("fit to content failed:", err);
     }
+  }
+
+  // Debounced refit. The content height is NOT constant: in compact mode the
+  // speed block grows the moment telemetry arrives (the tok/s unit and the
+  // 30 s average appear, and a "split unavailable" note may too). Fitting only
+  // on mount/toggle would therefore leave the bottom clipped until the user
+  // toggles. Refit whenever the monitoring state updates; the guard inside
+  // fitWindowToContent() keeps this from thrashing the window.
+  let fitTimer = null;
+  function scheduleFit() {
+    if (fitTimer) clearTimeout(fitTimer);
+    fitTimer = setTimeout(fitWindowToContent, 150);
   }
 
   // Explicitly re-fit when the user toggles compact <-> expanded. Driving this
@@ -82,12 +98,9 @@
     fitWindowToContent();
   }
 
-  // Fit once after the widget is first mounted (initial content height).
-  let didInitialFit = false;
-  $: if (widgetEl && !didInitialFit) {
-    didInitialFit = true;
-    fitWindowToContent();
-  }
+  // Refit on every telemetry update (subscribe fires immediately too, so this
+  // also covers the initial fit).
+  onMount(() => state.subscribe(() => scheduleFit()));
 
   $: if ($ui) {
     applyOptions($ui);
