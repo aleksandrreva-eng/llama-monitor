@@ -6,11 +6,16 @@
   $: s = $state;
   $: m = s.model;
 
+  // Show only the model's own name — strip any path prefix so a full path
+  // (e.g. when name falls back to model_path) renders as just the filename.
   $: displayName = m.name
-    ? m.name
+    ? m.name.replace(/.*[/\\]/, "")
     : m.loaded
       ? "Нет загруженной модели"
       : "Модель не определена";
+
+  // The full path, kept for reference below the name.
+  $: displayPath = m.path || (m.name && (m.name.match(/^(.*[/\\])/) || ["", ""])[1]);
 
   $: metaParts = [
     m.contextSize ? `ctx ${m.contextSize.toLocaleString("ru-RU")}` : null,
@@ -23,8 +28,8 @@
   <div class="model-name">{displayName}</div>
   {#if expanded}
     <div class="model-meta">{metaParts.join(" · ") || "—"}</div>
-    {#if m.path}
-      <div class="model-path">{m.path}</div>
+    {#if displayPath}
+      <div class="model-path">{displayPath}</div>
     {/if}
   {/if}
 </div>
