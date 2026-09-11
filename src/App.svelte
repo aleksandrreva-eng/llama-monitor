@@ -47,27 +47,45 @@
 
   // Fit the OS window to the widget's natural content height (keeps the
   // current width so manual horizontal resizes are preserved). The widget is
-  // height:100% of the window, so measure scrollHeight (true content height),
-  // not getBoundingClientRect (which would just echo the window height).
+  // height:100% of the window WITH overflow:hidden, so its scrollHeight just
+  // echoes the window height — not the content height. Temporarily release the
+  // fixed height (-> auto) so the element grows to its natural size, measure
+  // that, then restore the CSS-driven 100% after resizing the window.
   async function fitWindowToContent() {
     if (!widgetEl) return;
     try {
       const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
       await tick();
       const win = getCurrentWindow();
+      const prevHeight = widgetEl.style.height;
+      widgetEl.style.height = "auto";
+      await tick();
       const h = Math.round(widgetEl.scrollHeight);
       const scale = await win.scaleFactor();
       const cur = await win.innerSize(); // physical pixels
       const logicalWidth = cur.width / scale;
       await win.setSize(new LogicalSize(logicalWidth, h));
+      // Restore the CSS height:100% (now matches the resized window). Empty
+      // string falls back to the stylesheet rule.
+      widgetEl.style.height = prevHeight;
     } catch (err) {
       console.warn("fit to content failed:", err);
     }
   }
 
-  // Re-fit whenever expand/collapse changes (and once after mount).
-  $: if (widgetEl) {
-    expanded;
+  // Explicitly re-fit when the user toggles compact <-> expanded. Driving this
+  // from the handler (after tick()) is reliable, unlike a reactive statement
+  // that also depends on the transient render state.
+  async function toggleExpanded() {
+    expanded = !expanded;
+    await tick();
+    fitWindowToContent();
+  }
+
+  // Fit once after the widget is first mounted (initial content height).
+  let didInitialFit = false;
+  $: if (widgetEl && !didInitialFit) {
+    didInitialFit = true;
     fitWindowToContent();
   }
 
@@ -123,7 +141,7 @@
 <div class="widget" class:expanded style="opacity: {$ui && $ui.opacity}">
   <Header
     {expanded}
-    onToggleExpanded={() => (expanded = !expanded)}
+    onToggleExpanded={toggleExpanded}
     onHideToTray={hideToTray}
   />
 
