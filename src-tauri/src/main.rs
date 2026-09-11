@@ -179,6 +179,7 @@ fn main() -> anyhow::Result<()> {
             api::read_logs,
             api::clear_logs,
             api::report_frontend_error,
+            api::lan::scan_lan,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

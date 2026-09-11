@@ -2,6 +2,7 @@
 
 pub mod adapters;
 pub mod calculator;
+pub mod lan;
 pub mod types;
 
 use std::sync::Mutex;

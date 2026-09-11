@@ -93,3 +93,13 @@ export async function saveSize(w, h) {
     pushLog("saveSize error: " + err);
   }
 }
+
+/// Scan the LAN for inference servers and return discovered profiles.
+export async function scanLan(timeoutMs = 9000) {
+  try {
+    return await invoke("scan_lan", { timeoutMs });
+  } catch (err) {
+    pushLog("scanLan error: " + err);
+    return [];
+  }
+}

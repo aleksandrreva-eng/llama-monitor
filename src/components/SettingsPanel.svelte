@@ -1,6 +1,6 @@
 <script>
   import { settings, ui, logStore } from "../store";
-  import { saveSettings, resetSettings, clearLogs, readLogs } from "../tauriApi";
+  import { saveSettings, resetSettings, clearLogs, readLogs, scanLan } from "../tauriApi";
 
   export let onClose;
   export let showLogsInitially = false;
@@ -94,6 +94,46 @@
     if (t === "light") return "light";
     return "auto";
   }
+
+  // --- LAN scan ----------------------------------------------------------
+  let scanning = false;
+  let found = [];
+  let scanError = "";
+
+  async function runScan() {
+    scanning = true;
+    found = [];
+    scanError = "";
+    try {
+      const res = await scanLan(9000);
+      found = res || [];
+      if (!found.length) scanError = "Серверы не найдены в локальной сети.";
+    } catch (e) {
+      scanError = "Ошибка сканирования: " + e;
+    } finally {
+      scanning = false;
+    }
+  }
+
+  function addDiscovered(f) {
+    // Skip a server whose URL is already in the list.
+    if (servers.some((p) => p.url === f.url)) {
+      found = found.filter((x) => x.url !== f.url);
+      return;
+    }
+    const id = genId();
+    const list = servers.concat([
+      {
+        id,
+        label: f.label,
+        url: f.url,
+        kind: f.kind,
+        api_key: null,
+      },
+    ]);
+    apply({ servers: list });
+    found = found.filter((x) => x.url !== f.url);
+  }
 </script>
 
 <div class="panel">
@@ -125,6 +165,28 @@
         {/each}
       </div>
       <button class="btn add" on:click={addServer}>+ Добавить сервер</button>
+
+      <div class="lan-scan">
+        <button class="btn scan" on:click={runScan} disabled={scanning}>
+          {scanning ? "Сканирование…" : "🔍 Сканировать LAN"}
+        </button>
+        {#if scanError}
+          <p class="hint scan-msg">{scanError}</p>
+        {/if}
+        {#if found.length}
+          <div class="section-subtitle">Найдено в сети</div>
+          <div class="found-list">
+            {#each found as f (f.url)}
+              <div class="found-row">
+                <span class="found-name" title={f.url}>{f.label}</span>
+                <span class="server-kind">{KIND_LABELS[f.kind] || f.kind}</span>
+                <button class="found-add" title="Добавить сервер"
+                        on:click={() => addDiscovered(f)}>＋</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </section>
 
     <!-- Active profile editor -->
@@ -387,6 +449,71 @@
   .btn.add {
     width: 100%;
     border-style: dashed;
+  }
+
+  .lan-scan {
+    margin-top: 10px;
+    border-top: 1px dashed var(--border);
+    padding-top: 10px;
+  }
+
+  .btn.scan {
+    width: 100%;
+  }
+
+  .btn.scan:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  .scan-msg {
+    margin-top: 6px;
+    color: var(--text-hint);
+  }
+
+  .section-subtitle {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-hint);
+    margin: 10px 0 6px;
+  }
+
+  .found-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .found-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .found-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .found-add {
+    flex-shrink: 0;
+    width: 30px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .found-add:hover {
+    border-color: var(--accent, #0078d4);
+    color: var(--accent, #0078d4);
   }
 
   .grid {
