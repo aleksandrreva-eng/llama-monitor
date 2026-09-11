@@ -31,8 +31,13 @@
   $: statusClass = STATUS_CLASS[s?.connection] || "unavailable";
 
   function toggleAlwaysOnTop() {
-    ui.update((u) => ({ ...u, alwaysOnTop: !u.alwaysOnTop }));
-    saveSettings({ always_on_top: !$ui.alwaysOnTop });
+    // Compute the next value BEFORE updating the store: `ui.update` applies
+    // synchronously, so reading `$ui.alwaysOnTop` afterwards already yields the
+    // new value — and we would persist (and immediately restore) the opposite,
+    // making the button a no-op.
+    const next = !$ui.alwaysOnTop;
+    ui.update((u) => ({ ...u, alwaysOnTop: next }));
+    saveSettings({ always_on_top: next });
   }
 
   function toggleTheme() {
