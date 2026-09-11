@@ -151,7 +151,8 @@
   }}
 />
 
-<div class="widget" class:expanded style="opacity: {$ui && $ui.opacity}">
+<div class="widget" class:expanded style="opacity: {$ui && $ui.opacity}"
+     bind:this={widgetEl}>
   <Header
     {expanded}
     onToggleExpanded={toggleExpanded}
