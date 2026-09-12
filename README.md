@@ -1,8 +1,17 @@
 # llama.cpp Monitor
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/aleksandrreva-eng/llama-monitor?label=release)](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/aleksandrreva-eng/llama-monitor/total)](https://github.com/aleksandrreva-eng/llama-monitor/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2011-0078D4.svg)](#требования)
+[![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB.svg)](https://tauri.app)
+[![Svelte 4](https://img.shields.io/badge/Svelte-4-FF3E00.svg)](https://svelte.dev)
+
 Плавающее десктопное приложение-виджет для Windows 11, отображающее состояние локального или сетевого сервера **llama.cpp**: контекст, скорости инференса, загруженную модель и статус подключения.
 
 Стек: **Tauri 2 (Rust) + Svelte 4**.
+
+> **[Скачать последний релиз](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)** — установщик `.msi` для Windows 11 x64. Подробности установки — в разделе [Быстрый старт](#быстрый-старт).
 
 ---
 
