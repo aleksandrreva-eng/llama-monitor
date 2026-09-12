@@ -33,6 +33,8 @@
     "core:path:default",
 
     "autostart:default",
-    "global-shortcut:default"
+    "global-shortcut:default",
+
+    "core:tray:default"
   ]
 }

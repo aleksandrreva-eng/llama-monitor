@@ -22,8 +22,8 @@ use std::sync::Mutex;
 use config::Settings;
 use monitoring::MonitoringService;
 use tauri::menu::{Menu, MenuItemBuilder};
-use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewWindow, WindowEvent, Wry};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, RunEvent, WebviewWindow, WindowEvent, Wry};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -144,42 +144,52 @@ fn main() -> anyhow::Result<()> {
 
             let tray = TrayIconBuilder::with_id("llama-monitor-tray")
                 .menu(&menu)
+                // Show the context menu on RIGHT click only. Left click is
+                // reserved for toggling the window (handled below) — do NOT let
+                // it open the menu, otherwise the two behaviours fight on
+                // Windows and the icon appears unresponsive.
                 .show_menu_on_left_click(false)
                 .tooltip("llama.cpp Monitor")
                 .build(app)?;
 
-            // Clicking / double-clicking the tray icon restores (or hides) the
-            // widget. We handle this on the Rust side directly instead of
-            // pushing an event through the frontend, so it works even if the
-            // webview hasn't finished wiring up its listeners.
+            // Toggle the main widget: hide it when visible, otherwise show +
+            // focus it. Done in Rust so it never depends on the webview being
+            // wired up. Shared by both the icon click and the menu items.
+            let toggle_window = |app: &AppHandle<Wry>| {
+                if let Some(w) = app.get_webview_window("main") {
+                    if w.is_visible().unwrap_or(false) {
+                        let _ = w.hide();
+                    } else {
+                        let _ = w.show();
+                        let _ = w.unminimize();
+                        let _ = w.set_focus();
+                    }
+                }
+            };
+
+            // Left-click (single) on the tray icon toggles the widget.
             {
-                let _ = tray.on_tray_icon_event(|tray, _event| {
-                    let handle = tray.app_handle();
-                    let win = match handle.get_webview_window("main") {
-                        Some(w) if w.is_visible().unwrap_or(false) => Some(w),
-                        _ => None,
-                    };
-                    match win {
-                        Some(w) => {
-                            let _ = w.hide();
-                        }
-                        None => {
-                            if let Some(w) = handle.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                let _ = w.set_focus();
-                            }
-                        }
+                let _ = tray.on_tray_icon_event(move |tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        log::info!("tray icon left-clicked");
+                        toggle_window(tray.app_handle());
                     }
                 });
             }
             {
-                let _ = tray.on_menu_event(|app, event| {
+                let _ = tray.on_menu_event(move |app, event| {
                     let id = event.id().0.clone();
-                    if id == "quit" {
-                        app.exit(0);
-                    } else {
-                        let _ = app.emit("tray:event", id);
+                    match id.as_str() {
+                        "quit" => app.exit(0),
+                        // "show" / "hide" both just toggle — the window knows
+                        // its own visibility, so one action covers both.
+                        "show" | "hide" => toggle_window(app),
+                        _ => {}
                     }
                 });
             }
