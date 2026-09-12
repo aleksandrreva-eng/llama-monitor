@@ -36,6 +36,20 @@
     if (v == null) return null;
     return v.toFixed(1);
   }
+
+  // Why a speed card has no number. A bare "—" is useless: the usual cause is a
+  // server started without `--metrics` (the endpoint then answers 501 and this
+  // build's /slots carries no timings either), and the user only sees the
+  // diagnostics block in expanded mode. Derive a short reason from the
+  // diagnostics the backend already sends so the compact view explains itself.
+  $: diags = $state.diagnostics || [];
+  $: hasDiag = (needle) =>
+    diags.some((d) => typeof d === "string" && d.includes(needle));
+  $: reason = hasDiag("нет --metrics")
+    ? "нет --metrics"
+    : hasDiag("простаивает")
+      ? "нет активной генерации"
+      : "нет данных";
 </script>
 
 <div class="section">
@@ -46,9 +60,12 @@
         {#if pf.available}<span class="live-dot"></span>{/if}
       </div>
       <div class="speed-value-row">
-        <div class="speed-value">{pf.available ? fmt(pf.current) : "—"}</div>
+        <div class="speed-value" class:na={!pf.available}>{pf.available ? fmt(pf.current) : "—"}</div>
         {#if pf.available}<div class="speed-unit">tok/s</div>{/if}
       </div>
+      {#if !pf.available}
+        <div class="speed-sub">{reason}</div>
+      {/if}
       {#if pf.available && pf.avg30s != null}
         <div class="speed-avg">ср. {fmt(pf.avg30s)}</div>
       {/if}
@@ -69,9 +86,12 @@
         {#if gn.available}<span class="live-dot"></span>{/if}
       </div>
       <div class="speed-value-row">
-        <div class="speed-value">{gn.available ? fmt(gn.current) : "—"}</div>
+        <div class="speed-value" class:na={!gn.available}>{gn.available ? fmt(gn.current) : "—"}</div>
         {#if gn.available}<div class="speed-unit">tok/s</div>{/if}
       </div>
+      {#if !gn.available}
+        <div class="speed-sub">{reason}</div>
+      {/if}
       {#if gn.available && gn.avg30s != null}
         <div class="speed-avg">ср. {fmt(gn.avg30s)}</div>
       {/if}
@@ -198,6 +218,26 @@
   :global(.widget.expanded) .speed-value {
     font-size: 44px;
     letter-spacing: -2px;
+  }
+
+  /* No reading yet: keep the dash visible but clearly inactive, so "—" reads as
+     "nothing to measure" rather than "broken / still loading". */
+  .speed-value.na {
+    color: rgba(255, 255, 255, .25);
+  }
+  :global(:root[data-theme="light"]) .speed-value.na {
+    color: rgba(0, 0, 0, .22);
+  }
+
+  .speed-sub {
+    font-size: 10px;
+    line-height: 1.3;
+    margin-top: 6px;
+    font-style: italic;
+    color: rgba(255, 255, 255, .45);
+  }
+  :global(:root[data-theme="light"]) .speed-sub {
+    color: rgba(0, 0, 0, .5);
   }
 
   .speed-unit {
