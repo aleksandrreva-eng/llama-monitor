@@ -148,18 +148,28 @@ fn main() -> anyhow::Result<()> {
                 .tooltip("llama.cpp Monitor")
                 .build(app)?;
 
-            // Route tray clicks to the frontend so it can toggle the window.
-            // Left-click / double-click the tray icon to restore the widget
-            // (emit "show" which the Svelte side turns into restoreWindow).
+            // Clicking / double-clicking the tray icon restores (or hides) the
+            // widget. We handle this on the Rust side directly instead of
+            // pushing an event through the frontend, so it works even if the
+            // webview hasn't finished wiring up its listeners.
             {
-                let _ = tray.on_tray_icon_event(|tray, event| {
+                let _ = tray.on_tray_icon_event(|tray, _event| {
                     let handle = tray.app_handle();
-                    if matches!(
-                        event,
-                        tauri::tray::TrayIconEvent::Click { .. }
-                            | tauri::tray::TrayIconEvent::DoubleClick { .. }
-                    ) {
-                        let _ = handle.emit("tray:event", "show");
+                    let win = match handle.get_webview_window("main") {
+                        Some(w) if w.is_visible().unwrap_or(false) => Some(w),
+                        _ => None,
+                    };
+                    match win {
+                        Some(w) => {
+                            let _ = w.hide();
+                        }
+                        None => {
+                            if let Some(w) = handle.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                        }
                     }
                 });
             }
