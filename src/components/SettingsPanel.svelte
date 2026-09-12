@@ -1,6 +1,7 @@
 <script>
   import { settings, ui, logStore } from "../store";
   import { saveSettings, resetSettings, clearLogs, readLogs, scanLan } from "../tauriApi";
+  import { t, setLocale } from "../i18n";
 
   export let onClose;
   export let showLogsInitially = false;
@@ -16,7 +17,7 @@
     local: "llama.cpp",
     vllm: "vLLM",
     ollama: "Ollama",
-    cloud: "Облако (OpenAI)",
+    cloud: "kind_cloud",
   };
 
   $: servers = ($settings && $settings.servers) || [];
@@ -30,7 +31,7 @@
 
   async function refreshLogs() {
     const lines = await readLogs(300);
-    logStore.set(lines.length ? lines : ["(лог пуст)"]);
+    logStore.set(lines.length ? lines : [$t("log_empty")]);
   }
 
   // Copy the current log to the clipboard (with a legacy fallback for webviews
@@ -65,7 +66,7 @@
   async function copyLogs() {
     const text = ($logStore && $logStore.length ? $logStore.join("\n") : "").trim();
     if (!text) {
-      flashCopy("Лог пуст — копировать нечего");
+      flashCopy($t("copy_empty"));
       return;
     }
     try {
@@ -74,13 +75,13 @@
       } else {
         fallbackCopy(text);
       }
-      flashCopy("Скопировано в буфер обмена");
+      flashCopy($t("copied"));
     } catch (e) {
       try {
         fallbackCopy(text);
-        flashCopy("Скопировано в буфер обмена");
+        flashCopy($t("copied"));
       } catch (e2) {
-        flashCopy("Не удалось скопировать: " + e2);
+        flashCopy($t("copy_failed", { e: e2 }));
       }
     }
   }
@@ -93,12 +94,17 @@
     apply({ active_server_id: id });
   }
 
+  function setLanguage(lang) {
+    setLocale(lang);
+    apply({ language: lang });
+  }
+
   function addServer() {
     const id = genId();
     const list = servers.concat([
       {
         id,
-        label: "Новый сервер",
+        label: $t("server_new"),
         url: "http://127.0.0.1:8080",
         kind: "local",
         api_key: null,
@@ -113,7 +119,7 @@
       list = [
         {
           id: genId(),
-          label: "Локальный llama.cpp",
+          label: $t("server_local_default"),
           url: "http://127.0.0.1:8080",
           kind: "local",
           api_key: null,
@@ -159,9 +165,9 @@
     try {
       const res = await scanLan(9000);
       found = res || [];
-      if (!found.length) scanError = "Серверы не найдены в локальной сети.";
+      if (!found.length) scanError = $t("scan_none");
     } catch (e) {
-      scanError = "Ошибка сканирования: " + e;
+      scanError = $t("scan_error", { e });
     } finally {
       scanning = false;
     }
@@ -190,49 +196,49 @@
 
 <div class="panel">
   <div class="panel-head">
-    <span>Настройки</span>
-    <button class="close" title="Закрыть" aria-label="Закрыть"
+    <span>{$t("word_settings")}</span>
+    <button class="close" title={$t("title_close")} aria-label={$t("title_close")}
             on:click={() => (onClose ? onClose() : null)}>✕</button>
   </div>
 
   {#if !ready}
     <div class="grid">
-      <p class="hint" style="padding:12px 0">Загрузка настроек…</p>
+      <p class="hint" style="padding:12px 0">{$t("loading")}</p>
     </div>
   {:else}
   <div class="scroll">
     <!-- Server profiles -->
     <section class="section">
-      <div class="section-title">Серверы</div>
+      <div class="section-title">{$t("sec_servers")}</div>
       <div class="server-list">
         {#each servers as p (p.id)}
           <div class="server-row" class:active={p.id === activeId}>
-            <button class="server-select" on:click={() => setActive(p.id)} title="Сделать активным">
+            <button class="server-select" on:click={() => setActive(p.id)} title={$t("title_make_active")}>
               <span class="server-name">{p.label || p.url}</span>
-              <span class="server-kind">{KIND_LABELS[p.kind] || p.kind}</span>
+              <span class="server-kind">{$t(KIND_LABELS[p.kind] || p.kind)}</span>
             </button>
-            <button class="server-del" title="Удалить сервер"
+            <button class="server-del" title={$t("title_delete_server")}
                     on:click={() => removeServer(p.id)}>✕</button>
           </div>
         {/each}
       </div>
-      <button class="btn add" on:click={addServer}>+ Добавить сервер</button>
+      <button class="btn add" on:click={addServer}>+ {$t("add_server")}</button>
 
       <div class="lan-scan">
         <button class="btn scan" on:click={runScan} disabled={scanning}>
-          {scanning ? "Сканирование…" : "🔍 Сканировать LAN"}
+          {scanning ? $t("scanning") : $t("scan_lan")}
         </button>
         {#if scanError}
           <p class="hint scan-msg">{scanError}</p>
         {/if}
         {#if found.length}
-          <div class="section-subtitle">Найдено в сети</div>
+          <div class="section-subtitle">{$t("found_in_net")}</div>
           <div class="found-list">
             {#each found as f (f.url)}
               <div class="found-row">
                 <span class="found-name" title={f.url}>{f.label}</span>
-                <span class="server-kind">{KIND_LABELS[f.kind] || f.kind}</span>
-                <button class="found-add" title="Добавить сервер"
+                <span class="server-kind">{$t(KIND_LABELS[f.kind] || f.kind)}</span>
+                <button class="found-add" title={$t("title_add_server")}
                         on:click={() => addDiscovered(f)}>＋</button>
               </div>
             {/each}
@@ -244,44 +250,42 @@
     <!-- Active profile editor -->
     {#if activeProfile}
       <section class="section">
-        <div class="section-title">Активный сервер</div>
+        <div class="section-title">{$t("sec_active_server")}</div>
         <div class="grid">
           <label>
-            <span>Имя сервера</span>
+            <span>{$t("lbl_server_name")}</span>
             <input value={activeProfile.label}
                    on:input={(e) => updateServer(activeProfile.id, { label: e.target.value })}
-                   placeholder="(по умолчанию)" />
+                   placeholder={$t("ph_default")} />
           </label>
 
           <label>
-            <span>Тип</span>
+            <span>{$t("lbl_type")}</span>
             <select value={activeProfile.kind}
                     on:change={(e) => updateServer(activeProfile.id, { kind: e.target.value })}>
-              <option value="local">llama.cpp (локальный/удалённый)</option>
+              <option value="local">{$t("opt_local")}</option>
               <option value="vllm">vLLM</option>
               <option value="ollama">Ollama</option>
-              <option value="cloud">Облако (OpenAI)</option>
+              <option value="cloud">{$t("kind_cloud")}</option>
             </select>
           </label>
 
           <label class="wide">
-            <span>URL</span>
+            <span>{$t("lbl_url")}</span>
             <input value={activeProfile.url}
                    on:input={(e) => updateServer(activeProfile.id, { url: e.target.value })}
                    placeholder="http://127.0.0.1:8080" />
             <small class="hint">
-              Без суффикса <code>/v1</code>: нативные эндпоинты (для llama.cpp — корень;
-              для Ollama — <code>/api</code>) и OpenAI-совместимый <code>/v1</code>
-              выводятся автоматически.
+              {$t("hint_url")}
             </small>
           </label>
 
           <label class="wide">
-            <span>API-ключ (опционально)</span>
+            <span>{$t("lbl_api_key")}</span>
             <input type="password" value={apiKeyDisplay(activeProfile.api_key)}
                    on:input={(e) => onApiKey(activeProfile.id, e.target.value)}
-                   placeholder="(необязательно)" />
-            <small class="hint">Не попадает в логи. Пустое поле — ключ удаляется.</small>
+                   placeholder={$t("ph_optional")} />
+            <small class="hint">{$t("hint_api_key")}</small>
           </label>
         </div>
       </section>
@@ -289,31 +293,40 @@
 
     <!-- Shared monitoring settings -->
     <section class="section">
-      <div class="section-title">Опрос и подключение</div>
+      <div class="section-title">{$t("sec_polling")}</div>
       <div class="grid">
         <label>
-          <span>Интервал опроса, мс</span>
+          <span>{$t("lbl_poll_interval")}</span>
           <input type="number" bind:value={$settings.poll_interval_ms}
                  on:input={() => apply({ poll_interval_ms: $settings.poll_interval_ms })} />
         </label>
 
         <label>
-          <span>Таймаут запроса, мс</span>
+          <span>{$t("lbl_timeout")}</span>
           <input type="number" bind:value={$settings.request_timeout_ms}
                  on:input={() => apply({ request_timeout_ms: $settings.request_timeout_ms })} />
         </label>
 
         <label>
-          <span>Тема</span>
-          <select bind:value={$settings.theme} on:change={() => apply({ theme: $settings.theme })}>
-            <option value="auto">Авто</option>
-            <option value="light">Светлая</option>
-            <option value="dark">Тёмная</option>
+          <span>{$t("lbl_language")}</span>
+          <select value={$settings.language}
+                  on:change={(e) => setLanguage(e.target.value)}>
+            <option value="ru">{$t("opt_lang_ru")}</option>
+            <option value="en">{$t("opt_lang_en")}</option>
           </select>
         </label>
 
         <label>
-          <span>Прозрачность окна</span>
+          <span>{$t("lbl_theme")}</span>
+          <select bind:value={$settings.theme} on:change={() => apply({ theme: $settings.theme })}>
+            <option value="auto">{$t("opt_auto")}</option>
+            <option value="light">{$t("opt_light")}</option>
+            <option value="dark">{$t("opt_dark")}</option>
+          </select>
+        </label>
+
+        <label>
+          <span>{$t("lbl_opacity")}</span>
           <input type="range" min="0.5" max="1" step="0.05" bind:value={$settings.window_opacity}
                  on:input={() => apply({ window_opacity: $settings.window_opacity })} />
         </label>
@@ -321,44 +334,44 @@
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.default_compact}
                  on:change={() => apply({ default_compact: $settings.default_compact })} />
-          <span>Компактный режим по умолчанию</span>
+          <span>{$t("lbl_default_compact")}</span>
         </label>
 
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.always_on_top}
                  on:change={() => apply({ always_on_top: $settings.always_on_top })} />
-          <span>Закрепить поверх всех окон</span>
+          <span>{$t("lbl_always_on_top")}</span>
         </label>
 
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.minimize_to_tray}
                  on:change={() => apply({ minimize_to_tray: $settings.minimize_to_tray })} />
-          <span>Сворачивать в трей при закрытии</span>
+          <span>{$t("lbl_minimize_tray")}</span>
         </label>
 
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.autorun}
                  on:change={() => apply({ autorun: $settings.autorun })} />
-          <span>Запуск при старте Windows</span>
+          <span>{$t("lbl_autorun")}</span>
         </label>
 
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.show_last_update}
                  on:change={() => apply({ show_last_update: $settings.show_last_update })} />
-          <span>Показывать время последнего обновления</span>
+          <span>{$t("lbl_show_last_update")}</span>
         </label>
 
         <label class="switch">
           <input type="checkbox" bind:checked={$settings.verbose_logging}
                  on:change={() => apply({ verbose_logging: $settings.verbose_logging })} />
-          <span>Расширенное логирование</span>
+          <span>{$t("lbl_verbose_log")}</span>
         </label>
 
         <label class="wide">
-          <span>Горячая клавиша (показать/скрыть)</span>
+          <span>{$t("lbl_hotkey")}</span>
           <input bind:value={$settings.hotkey} placeholder="CmdOrCtrl+Shift+M"
                  on:input={() => apply({ hotkey: $settings.hotkey })} />
-          <span class="hint">Например: CmdOrCtrl+Shift+M. Пустое поле — отключить.</span>
+          <span class="hint">{$t("hint_hotkey")}</span>
         </label>
       </div>
     </section>
@@ -366,12 +379,12 @@
   {/if}
 
   <div class="panel-actions">
-    <button class="btn" on:click={() => { showLogs = !showLogs; if (showLogs) refreshLogs(); }}>Логи</button>
-    <button class="btn danger" on:click={resetSettings}>Сбросить настройки</button>
+    <button class="btn" on:click={() => { showLogs = !showLogs; if (showLogs) refreshLogs(); }}>{$t("btn_logs")}</button>
+    <button class="btn danger" on:click={resetSettings}>{$t("btn_reset")}</button>
     {#if showLogs}
-      <button class="btn" on:click={refreshLogs}>Обновить</button>
-      <button class="btn" on:click={copyLogs}>Копировать</button>
-      <button class="btn" on:click={async () => { await clearLogs(); logStore.set(["(лог очищен)"]); }}>Очистить логи</button>
+      <button class="btn" on:click={refreshLogs}>{$t("btn_refresh")}</button>
+      <button class="btn" on:click={copyLogs}>{$t("btn_copy")}</button>
+      <button class="btn" on:click={async () => { await clearLogs(); logStore.set([$t("log_cleared")]); }}>{$t("btn_clear_logs")}</button>
     {/if}
   </div>
 

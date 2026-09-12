@@ -2,6 +2,7 @@
   import { state, ui, settings } from "../store";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { saveSettings } from "../tauriApi";
+  import { t } from "../i18n";
 
   export let expanded = false;
   export let onToggleExpanded;
@@ -70,9 +71,9 @@
   }
 
   $: themeIcon = $ui?.theme === "light" ? "🌙" : "☀️";
-  $: themeTitle = $ui?.theme === "light" ? "Тема: светлая" : "Тема: тёмная";
+  $: themeTitle = $ui?.theme === "light" ? $t("theme_light") : $t("theme_dark");
   $: modeIcon = expanded ? "▤" : "▭";
-  $: modeTitle = expanded ? "Развёрнутый режим" : "Компактный режим";
+  $: modeTitle = expanded ? $t("mode_expanded") : $t("mode_compact");
   $: pinned = $ui?.alwaysOnTop;
 </script>
 
@@ -87,9 +88,9 @@
 
     <div class="header-divider"></div>
 
-    <button class="icon-btn" class:pinned title="Поверх окон" on:click={toggleAlwaysOnTop}>📌</button>
-    <button class="icon-btn" title="В трей" on:click={onHideToTray}>─</button>
-    <button class="icon-btn" title="Закрыть" aria-label="Закрыть" on:click={closeWindow}>✕</button>
+    <button class="icon-btn" class:pinned title={$t("title_always_on_top")} on:click={toggleAlwaysOnTop}>📌</button>
+    <button class="icon-btn" title={$t("title_to_tray")} on:click={onHideToTray}>─</button>
+    <button class="icon-btn" title={$t("title_close")} aria-label={$t("title_close")} on:click={closeWindow}>✕</button>
   </div>
 </div>
 

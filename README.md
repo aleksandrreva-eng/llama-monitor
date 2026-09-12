@@ -3,56 +3,63 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/aleksandrreva-eng/llama-monitor?label=release)](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aleksandrreva-eng/llama-monitor/total)](https://github.com/aleksandrreva-eng/llama-monitor/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%2011-0078D4.svg)](#требования)
+[![Platform](https://img.shields.io/badge/platform-Windows%2011-0078D4.svg)](#requirements)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB.svg)](https://tauri.app)
 [![Svelte 4](https://img.shields.io/badge/Svelte-4-FF3E00.svg)](https://svelte.dev)
 
-Плавающее десктопное приложение-виджет для Windows 11, отображающее состояние локального или сетевого сервера **llama.cpp**: контекст, скорости инференса, загруженную модель и статус подключения.
+🇷🇺 [Русская версия](README.ru.md)
 
-Стек: **Tauri 2 (Rust) + Svelte 4**.
+A floating desktop widget for Windows 11 that shows the state of a local or
+network **llama.cpp** server: context usage, inference speeds, the loaded model,
+and connection status.
 
-> **[Скачать последний релиз](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)** — установщик `.msi` для Windows 11 x64. Подробности установки — в разделе [Быстрый старт](#быстрый-старт).
+Stack: **Tauri 2 (Rust) + Svelte 4**.
 
----
-
-## Возможности
-
-- Плавающее компактное окно, которое можно перетаскивать и закрепить поверх других окон (always-on-top).
-- Сворачивание в системный трей, автозапуск при старте Windows, запоминание позиции и размера окна.
-- Тёмная и светлая тема (авто/свет/тёмная) в стиле Windows 11.
-- Отображение контекста: всего / потрачено / осталось + прогресс-бар с плавным градиентом зелёный→жёлтый→красный.
-- Отображение скорости **Prefill** и **Generation** в токенах/сек со скользящим средним за 30 с.
-- Отображение загруженной модели (имя, квантизация, размер контекста, версия).
-- Статус подключения и время последнего обновления.
-- Корректные заглушки («N/A», «нет данных», «Модель не определена») вместо падений, если данные недоступны.
+> **[Download the latest release](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)**
+> — a `.msi` installer for Windows 11 x64. Installation details are in
+> [Quick start](#quick-start).
 
 ---
 
-## Скриншоты
+## Features
 
-Тёмная тема, данные с живого сервера (`--metrics` включён).
+- A floating compact window you can drag around and pin above other windows (always-on-top).
+- Minimize to the system tray, auto-start with Windows, remember window position and size.
+- Dark and light themes (auto/light/dark) in a Windows 11 style.
+- Context display: total / used / free, plus a progress bar with a smooth green→yellow→red gradient.
+- **Prefill** and **Generation** speeds in tokens/sec with a 30-second sliding average.
+- Loaded model info (name, quantization, context size, build version).
+- Connection status and last-update time.
+- Correct fallbacks ("N/A", "no data", "Model not detected") instead of crashes when data is missing.
 
-| Компактный режим | Развёрнутый режим |
+---
+
+## Screenshots
+
+Dark theme, data from a live server (`--metrics` enabled).
+
+| Compact mode | Expanded mode |
 | :---: | :---: |
-| ![Компактный режим](docs/screenshots/compact-dark.png) | ![Развёрнутый режим](docs/screenshots/expanded-dark.png) |
+| ![Compact mode](docs/screenshots/compact-dark.png) | ![Expanded mode](docs/screenshots/expanded-dark.png) |
 
-В развёрнутом режиме добавляются спарклайны скоростей за 30 с, полный путь к `.gguf`,
-источник данных (`/metrics` + `/props`), счётчик ошибок и кнопки «Настройки», «Логи», «Свернуть».
+In expanded mode the widget adds 30-second speed sparklines, the full `.gguf`
+path, the data source (`/metrics` + `/props`), an error counter, and the
+"Settings", "Logs", and "Minimize" buttons.
 
 ---
 
-## Быстрый старт
+## Quick start
 
-### Требования
+### Requirements
 
-- **Windows 11** (WebView2 уже входит в Edge).
-- **Rust** (cargo) — https://rustup.rs. Внимание: `cargo` не всегда в `PATH` по
-  умолчанию. Перед сборкой выполните `export PATH="/c/Users/kakog/.cargo/bin:$PATH"`
-  (или добавьте в профиль shell).
-- **Node.js** 22+ и npm.
-- **VS 2022 Build Tools** (C++ workload) для компиляции нативных зависимостей.
+- **Windows 11** (WebView2 ships with Edge).
+- **Rust** (cargo) — https://rustup.rs. Note: `cargo` is not always on `PATH`
+  by default. Before building, run `export PATH="$HOME/.cargo/bin:$PATH"`
+  (or add it to your shell profile).
+- **Node.js** 22+ and npm.
+- **VS 2022 Build Tools** (C++ workload) to compile native dependencies.
 
-### Установка и запуск в режиме разработки
+### Install and run in development mode
 
 ```bash
 cd llama-monitor
@@ -60,150 +67,163 @@ npm install
 npm run tauri:dev
 ```
 
-`npm run tauri:dev` запускает Vite dev-сервер и Tauri в режиме отладки. Команда
-сама собирает Rust-бэкенд (нужен `cargo` в `PATH`), поэтому отдельный `cargo build`
-перед ней не обязателен.
+`npm run tauri:dev` starts the Vite dev server and Tauri in debug mode. It
+builds the Rust backend on its own (cargo must be on `PATH`), so a separate
+`cargo build` beforehand is not required.
 
-### Сборка релизной версии
+### Build the release version
 
 ```bash
 npm install
 npm run tauri:build
 ```
 
-Готовый установщик (MSI) появится в `src-tauri/target/release/bundle/msi/`.
+The finished installer (MSI) appears in `src-tauri/target/release/bundle/msi/`.
 
-Установщик ставит приложение в `Program Files` и требует прав администратора (per-machine MSI,
-UAC-запрос). Готовый `llama-monitor.exe` из `target/release/` можно также запускать
-портативно, без установки.
+The installer puts the app in `Program Files` and needs administrator rights
+(per-machine MSI, UAC prompt). The built `llama-monitor.exe` from
+`target/release/` can also be run portably, without installing.
 
-### Где лежат логи
+### Where the logs live
 
-- Обычно: `%LOCALAPPDATA%\llama-monitor\llama-monitor.log`
-- Портативный запуск: если папка рядом с `.exe` доступна на запись, лог пишется туда.
+- Normally: `%LOCALAPPDATA%\llama-monitor\llama-monitor.log`
+- Portable run: if the folder next to the `.exe` is writable, the log is written there.
 
-`Program Files` доступен только для чтения неэлевированному процессу, поэтому писать лог
-рядом с установленным `.exe` нельзя (ошибка `os error 5`) — приложение само выбирает
-доступный для записи каталог.
+`Program Files` is read-only for a non-elevated process, so the log cannot be
+written next to the installed `.exe` (error `os error 5`) — the app picks a
+writable directory on its own.
 
-### Прокси и локальные запросы
+### Proxy and local requests
 
-Приложение всегда обращается к `127.0.0.1`, поэтому запросы к серверу принудительно идут
-**мимо прокси** (`HTTP_PROXY`/`HTTPS_PROXY` игнорируются). Это важно: унаследованный из
-окружения прокси иначе перехватывает даже loopback-запросы, и мониторинг «не видит» сервер,
-хотя тот работает. Локальный монитор не должен зависеть от корректности прокси.
+The app always talks to `127.0.0.1`, so requests to the server are forced to
+bypass the proxy (`HTTP_PROXY`/`HTTPS_PROXY` are ignored). This matters: a proxy
+inherited from the environment would otherwise intercept even loopback requests,
+and the monitor would "not see" the server even though it is running. A local
+monitor must not depend on the proxy being configured correctly.
 
-### Тесты
+### Tests
 
 ```bash
 cd llama-monitor/src-tauri
-export PATH="/c/Users/kakog/.cargo/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
 cargo test
 ```
 
-Покрывают парсинг адаптеров (Prometheus/JSON, контекст, скорости, модель) и
-логику калькулятора (статусы, сглаживание, определение устаревания) — 20 тестов.
-
-
----
-
-## Настройка
-
-Откройте панель настроек (иконка ⚙️ в расширенном режиме):
-
-- **Адрес/порт сервера** — по умолчанию `127.0.0.1:8080`.
-- **Префикс пути** — обычно **пусто**. Для llama.cpp служебные endpoint'ы
-  (`/health`, `/props`, `/slots`, `/metrics`) живут в корне сервера, а
-  OpenAI-совместимый путь `/v1` подставляется автоматически для `GET /v1/models`.
-  Меняйте это поле только если сервер поднят за обратным прокси с нестандартным
-  префиксом (например `/llama`).
-- **Интервал опроса** — миллисекунды между запросами (по умолчанию 3000).
-- **Таймаут запроса** — по умолчанию 4000 мс.
-- **Тема, прозрачность, режим (компактный/развёрнутый), автозапуск, always-on-top, трей, логирование.**
-- **API-ключ** — опционально, хранится в настройках и **не попадает в логи**.
-
-Настройки сохраняются в файл `llama-monitor-settings.json` рядом с исполняемым файлом.
-Файлы старых версий подхватываются автоматически: недостающие поля берут значения
-по умолчанию, а устаревший `base_path: "/v1"` мигрируется в пустой корень.
+Covers adapter parsing (Prometheus/JSON, context, speeds, model) and the
+calculator logic (statuses, smoothing, staleness detection) — 63 tests.
 
 ---
 
-## Источники данных и fallback
+## Configuration
 
-Приложение опрашивает лёгкие служебные endpoint'ы (без тяжёлых inference-запросов):
+Open the settings panel (the ⚙️ icon in expanded mode):
 
-| Поле | Primary | Fallback |
-|------|---------|----------|
-| Доступность | `GET /health` | таймаут запроса |
-| Контекст | `GET /metrics` (Prometheus или JSON) | `GET /slots` → «Контекст неизвестен» |
-| Скорости | `GET /metrics` | `GET /slots` (timings) → «Скорость недоступна» |
-| Имя модели | `GET /props` (`model_alias`) | `GET /v1/models`, затем `model_path` |
-| Квантизация | `GET /props` (`model_ftype`) | «N/A» |
-| Версия сервера | `GET /props` (`build_info`) | «N/A» |
+- **Server address/port** — defaults to `127.0.0.1:8080`.
+- **Path prefix** — usually **empty**. For llama.cpp the service endpoints
+  (`/health`, `/props`, `/slots`, `/metrics`) live at the server root, and the
+  OpenAI-compatible `/v1` is added automatically for `GET /v1/models`.
+  Change this only if the server is behind a reverse proxy with a non-standard
+  prefix (e.g. `/llama`).
+- **Poll interval** — milliseconds between requests (default 3000).
+- **Request timeout** — default 4000 ms.
+- **Theme, opacity, mode (compact/expanded), autorun, always-on-top, tray, logging.**
+- **API key** — optional, stored in settings and **never written to the logs**.
 
-**Важно про `/metrics`:** он доступен только если сервер llama.cpp запущен с флагом
-`--metrics`; иначе он отвечает `501`. При этом реальные имена метрик используют
-Prometheus-префикс `llamacpp:`:
+Settings are saved to `llama-monitor-settings.json` next to the executable.
+Legacy config files are picked up automatically: missing fields get default
+values, and a legacy `base_path: "/v1"` is migrated to an empty root.
+
+---
+
+## Data sources and fallback
+
+The app polls lightweight service endpoints (no heavy inference requests):
+
+| Field | Primary | Fallback |
+|-------|---------|----------|
+| Availability | `GET /health` | request timeout |
+| Context | `GET /metrics` (Prometheus or JSON) | `GET /slots` → "Context unknown" |
+| Speeds | `GET /metrics` | `GET /slots` (timings) → "Speed unavailable" |
+| Model name | `GET /props` (`model_alias`) | `GET /v1/models`, then `model_path` |
+| Quantization | `GET /props` (`model_ftype`) | "N/A" |
+| Server version | `GET /props` (`build_info`) | "N/A" |
+
+**About `/metrics`:** it is available only if the llama.cpp server was started
+with the `--metrics` flag; otherwise it returns `501`. The real metric names use
+the Prometheus `llamacpp:` prefix:
 
 ```
-llamacpp:prompt_tokens_seconds            6.79   — скорость prefill, tok/s
-llamacpp:predicted_tokens_seconds         5.03   — скорость generation, tok/s
-llamacpp:prompt_tokens_total             25      — счётчики (для расчёта скорости)
+llamacpp:prompt_tokens_seconds            6.79   — prefill speed, tok/s
+llamacpp:predicted_tokens_seconds         5.03   — generation speed, tok/s
+llamacpp:prompt_tokens_total             25      — counters (for speed calc)
 llamacpp:tokens_predicted_total          200
 ```
 
-Если готовой метрики-«гейджа» нет, скорость вычисляется как `total / seconds_total`.
-В наборе метрик **нет** данных о контексте, поэтому занятость контекста всегда берётся
-из `GET /slots` (включён по умолчанию). Если метрик нет, в диагностике честно
-показывается «Метрики отключены на сервере (нет --metrics)».
+If a ready gauge metric is missing, speed is computed as `total / seconds_total`.
+The metric set has **no** context data, so context usage always comes from
+`GET /slots` (enabled by default). If metrics are absent, the diagnostics honestly
+show "Metrics disabled on server (no --metrics)".
 
-> Примечание о надёжности: некоторые сборки llama.cpp отдают ложный `404` при
-> переиспользовании keep-alive соединения. Клиент приложения намеренно открывает новое
-> соединение на каждый запрос — это устраняет «мигающие» пропуски метрик.
+> Reliability note: some llama.cpp builds return a spurious `404` when reusing a
+> keep-alive connection. The app's client deliberately opens a fresh connection
+> per request — this removes the "flickering" metric gaps.
 
-Разные версии llama.cpp отдают разный формат — поэтому используются адаптеры с толерантным парсингом и явно помеченные недоступные поля. Поддерживаются как современный
-«плоский» `/props` (`model_alias`, `model_ftype`, `default_generation_settings.n_ctx`),
-так и старый вложенный (`llama.model`, `llama.context`, `llama.quantization`).
+Different llama.cpp versions return different formats — so tolerant parsers and
+explicitly-marked-unavailable fields are used. Both the modern "flat" `/props`
+(`model_alias`, `model_ftype`, `default_generation_settings.n_ctx`) and the old
+nested form (`llama.model`, `llama.context`, `llama.quantization`) are supported.
 
 ---
 
-## Архитектура
+## Architecture
 
 ```
 UI (Svelte) -> State -> Monitoring Service -> Data Adapters -> Calculator
 ```
 
-- **UI** — только отображение состояния, не ходит в сеть.
-- **State** — observable store (Svelte), реактивно передаёт состояние в UI.
-- **Monitoring Service** (Rust, tokio) — фоновый опрос с retry/exp-backoff и таймаутами.
-- **Data Adapters** — парсинг health/metrics/props/models/slots под разные версии llama.cpp.
-- **Metrics Calculator** — расчёт контекста, скоростей (скользящее среднее), статусов.
-- **Config / Logging / Error Handling** — сохранение настроек, локальные логи (без секретов), единая политика деградации.
+- **UI** — display only, does not touch the network.
+- **State** — observable store (Svelte), reactively pushes state to the UI.
+- **Monitoring Service** (Rust, tokio) — background polling with retry/exp-backoff and timeouts.
+- **Data Adapters** — parse health/metrics/props/models/slots across llama.cpp versions.
+- **Metrics Calculator** — context, speeds (sliding average), status computation.
+- **Config / Logging / Error Handling** — save settings, local logs (no secrets), uniform degradation policy.
 
-Подробнее — см. [`docs/design.md`](docs/design.md).
-
----
-
-## Ограничения
-
-- Если конкретная версия llama.cpp не отдаёт prefill/generation раздельно, скорости показываются суммарно с пометкой «разделение недоступно».
-- Если сервер запущен без `--metrics`, точные скорости недоступны — приложение переключается на `/slots` и показывает занятость контекста, честно помечая отсутствие метрик в диагностике.
-- Если контекст неизвестен, прогресс-бар показывает «нет данных» (нейтральный цвет).
-- `/slots` хранит счётчики токенов **после** завершения генерации, поэтому виджет продолжает показывать контекст, занятый последним запросом, а не сбрасывается в ноль.
-- Приложение не отправляет тяжёлые inference-запросы — только служебные.
-- Окно **без нативной рамки** (borderless) — управление только через виджет
-  (заголовок/трей). Закрытие (✕) прячет в трей при `minimize_to_tray`, иначе выходит.
-  Сделано намеренно для «плавающего» вида Windows 11.
-- Горячая клавиша показать/скрыть — по умолчанию **Ctrl+Shift+M**, настраивается в настройках (формат `CmdOrCtrl+Shift+M`; пустое поле — отключить). Глобальная, перехватывается даже при неактивном окне (через `tauri-plugin-global-shortcut`).
-- **Один экземпляр приложения** (через `tauri-plugin-single-instance`). Повторный запуск не создаёт второе окно и не отбирает горячую клавишу у уже запущенного — вместо этого показывается и фокусируется существующий виджет.
-- Прозрачность окна (`window_opacity`) реализована через CSS-прозрачность виджета.
+See [`docs/design.md`](docs/design.md) for details.
 
 ---
 
-## Лицензия
+## Limitations
 
-MIT — полный текст в файле [`LICENSE`](LICENSE).
+- If a particular llama.cpp version does not report prefill/generation separately, speeds are shown combined with a "split unavailable" note.
+- If the server runs without `--metrics`, exact speeds are unavailable — the app switches to `/slots` and shows context usage, honestly flagging the missing metrics in diagnostics.
+- If context is unknown, the progress bar shows "no data" (neutral color).
+- `/slots` keeps token counters **after** generation ends, so the widget keeps showing the context used by the last request instead of resetting to zero.
+- The app sends no heavy inference requests — only service ones.
+- The window is **borderless** (no native title bar) — controlled only through the widget
+  (header/tray). Closing (✕) hides to tray when `minimize_to_tray` is set, otherwise exits.
+  This is intentional for the floating Windows 11 look.
+- Show/hide hotkey — default **Ctrl+Shift+M**, configurable in settings (format
+  `CmdOrCtrl+Shift+M`; empty field disables it). Global, captured even when the window
+  is inactive (via `tauri-plugin-global-shortcut`).
+- **Single app instance** (via `tauri-plugin-single-instance`). A second launch does
+  not open a second window or steal the hotkey from the running one — instead it shows
+  and focuses the existing widget.
+- Window opacity (`window_opacity`) is implemented via the widget's CSS opacity.
 
-Код можно свободно использовать, изменять, распространять и встраивать в свои проекты,
-в том числе коммерчески. Единственное условие — сохранять текст лицензии и указание
-авторства в копиях или существенных частях программы.
+---
+
+## Localization
+
+The UI ships in **Russian** (default, the original language) and **English**.
+Switch the language in the settings panel (it is persisted). The active locale
+is stored in `Settings.language`.
+
+---
+
+## License
+
+MIT — full text in [`LICENSE`](LICENSE).
+
+You may freely use, modify, distribute, and embed the code in your own projects,
+including commercially. The only condition is to keep the license text and
+attribution in copies or substantial portions of the software.

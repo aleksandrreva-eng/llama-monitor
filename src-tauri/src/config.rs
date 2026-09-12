@@ -147,6 +147,10 @@ pub struct Settings {
     pub position: Option<WindowPos>,
     /// Persisted window size (in logical pixels).
     pub size: Option<WindowSize>,
+    /// UI language code: "ru" | "en". Backed by src/i18n.js in the frontend.
+    /// `#[serde(default)]` on the struct fills this from `Default` for legacy
+    /// settings files that lack the field, so older configs stay valid.
+    pub language: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -189,6 +193,7 @@ impl Default for Settings {
             hotkey: Some("CmdOrCtrl+Shift+M".to_string()),
             position: None,
             size: None,
+            language: "ru".to_string(),
         }
     }
 }

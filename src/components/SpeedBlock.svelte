@@ -1,5 +1,6 @@
 <script>
   import { state } from "../store";
+  import { t } from "../i18n";
 
   export let expanded = false;
 
@@ -46,10 +47,10 @@
   $: hasDiag = (needle) =>
     diags.some((d) => typeof d === "string" && d.includes(needle));
   $: reason = hasDiag("нет --metrics")
-    ? "нет --metrics"
+    ? $t("reason_no_metrics")
     : hasDiag("простаивает")
-      ? "нет активной генерации"
-      : "нет данных";
+      ? $t("reason_no_generation")
+      : $t("reason_no_data");
 </script>
 
 <div class="section">
@@ -67,7 +68,7 @@
         <div class="speed-sub">{reason}</div>
       {/if}
       {#if pf.available && pf.avg30s != null}
-        <div class="speed-avg">ср. {fmt(pf.avg30s)}</div>
+        <div class="speed-avg">{$t("speed_avg", { v: fmt(pf.avg30s) })}</div>
       {/if}
       {#if expanded && pfHistory.length > 1}
         <svg class="sparkline" width="100%" height="24" viewBox="0 0 300 24" preserveAspectRatio="none">
@@ -75,7 +76,7 @@
             points={sparkPoints(pfHistory, 300, 24)}/>
         </svg>
         {#if pf.avg30s != null}
-          <div class="speed-expanded-meta">ср. 30с {fmt(pf.avg30s)}</div>
+          <div class="speed-expanded-meta">{$t("speed_avg30", { v: fmt(pf.avg30s) })}</div>
         {/if}
       {/if}
     </div>
@@ -93,7 +94,7 @@
         <div class="speed-sub">{reason}</div>
       {/if}
       {#if gn.available && gn.avg30s != null}
-        <div class="speed-avg">ср. {fmt(gn.avg30s)}</div>
+        <div class="speed-avg">{$t("speed_avg", { v: fmt(gn.avg30s) })}</div>
       {/if}
       {#if expanded && gnHistory.length > 1}
         <svg class="sparkline" width="100%" height="24" viewBox="0 0 300 24" preserveAspectRatio="none">
@@ -101,14 +102,14 @@
             points={sparkPoints(gnHistory, 300, 24)}/>
         </svg>
         {#if gn.avg30s != null}
-          <div class="speed-expanded-meta">ср. 30с {fmt(gn.avg30s)}</div>
+          <div class="speed-expanded-meta">{$t("speed_avg30", { v: fmt(gn.avg30s) })}</div>
         {/if}
       {/if}
     </div>
   </div>
 
   {#if !pf.splitAvailable && (pf.available || gn.available)}
-    <div class="note">Разделение prefill/generation недоступно</div>
+    <div class="note">{$t("speed_split_unavailable")}</div>
   {/if}
 </div>
 

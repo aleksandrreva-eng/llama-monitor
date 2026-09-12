@@ -1,5 +1,6 @@
 <script>
   import { state } from "../store";
+  import { t, formatInt } from "../i18n";
 
   export let expanded = false;
 
@@ -9,24 +10,23 @@
   let showTip = false;
 
   function fmt(n) {
-    if (n == null) return "N/A";
-    return n.toLocaleString("ru-RU");
+    return formatInt(n);
   }
 
   $: pct = ctx.available && ctx.percent != null ? Math.round(ctx.percent * 100) : 0;
   $: label = ctx.available
     ? ctx.used != null
-      ? `Всего ${fmt(ctx.total)} · Потрачено ${fmt(ctx.used)} · Осталось ${fmt(ctx.remaining)}`
-      : `${fmt(ctx.total)} · потрачено неизвестно`
-    : "нет данных";
+      ? $t("ctx_summary", { total: fmt(ctx.total), used: fmt(ctx.used), remaining: fmt(ctx.remaining) })
+      : $t("ctx_unknown_used", { total: fmt(ctx.total) })
+    : $t("no_data");
 </script>
 
-<div class="section" class:warn={ctx.available && ctx.percent >= 0.75}
+  <div class="section" class:warn={ctx.available && ctx.percent >= 0.75}
      on:mouseenter={() => (showTip = true)} on:mouseleave={() => (showTip = false)}>
-  <div class="section-title">Контекст</div>
+  <div class="section-title">{$t("ctx_title")}</div>
   <div class="progress-row">
     <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-         aria-valuetext={ctx.available ? `${pct}%` : "нет данных"}>
+         aria-valuetext={ctx.available ? `${pct}%` : $t("no_data")}>
       <div class="progress-fill" style="width: {pct}%"></div>
     </div>
     <div class="progress-pct">{ctx.available ? pct + "%" : "—"}</div>
@@ -36,16 +36,15 @@
 
   {#if expanded && ctx.available}
     <div class="expanded-rows">
-      <div class="ctx-row"><span class="label">Всего</span><span class="value">{fmt(ctx.total)}</span></div>
-      <div class="ctx-row"><span class="label">Потрачено</span><span class="value">{fmt(ctx.used)}</span></div>
-      <div class="ctx-row"><span class="label">Осталось</span><span class="value">{fmt(ctx.remaining)}</span></div>
+      <div class="ctx-row"><span class="label">{$t("ctx_total")}</span><span class="value">{fmt(ctx.total)}</span></div>
+      <div class="ctx-row"><span class="label">{$t("ctx_used")}</span><span class="value">{fmt(ctx.used)}</span></div>
+      <div class="ctx-row"><span class="label">{$t("ctx_remaining")}</span><span class="value">{fmt(ctx.remaining)}</span></div>
     </div>
   {/if}
 
   {#if showTip && ctx.available}
     <div class="tip">
-      Всего: {fmt(ctx.total)} · Потрачено: {fmt(ctx.used)} · Осталось: {fmt(ctx.remaining)}
-      · Заполнено: {(ctx.percent * 100).toFixed(1)}%
+      {$t("ctx_tip", { total: fmt(ctx.total), used: fmt(ctx.used), remaining: fmt(ctx.remaining), pct: (ctx.percent * 100).toFixed(1) })}
     </div>
   {/if}
 </div>

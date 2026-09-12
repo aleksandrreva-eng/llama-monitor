@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { settings, ui, pushLog, get } from "./store";
+import { syncLocaleFromSettings } from "./i18n";
 
 export async function loadSettings() {
   try {
@@ -12,6 +13,7 @@ export async function loadSettings() {
       theme: s.theme,
       opacity: s.window_opacity,
     }));
+    syncLocaleFromSettings(s.language);
   } catch (err) {
     pushLog("loadSettings error: " + err);
   }
@@ -47,6 +49,7 @@ export async function resetSettings() {
       theme: s.theme,
       opacity: s.window_opacity,
     }));
+    syncLocaleFromSettings(s.language);
     pushLog("settings reset");
   } catch (err) {
     pushLog("resetSettings error: " + err);

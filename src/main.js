@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
 import App from "./App.svelte";
 import "./app.css";
+import { t } from "./i18n";
+
+// Small helper: translate a key via the current locale. Used for pre-mount
+// fatal errors and the error banner, where there is no Svelte component context
+// (so the `$t` auto-subscription syntax is unavailable).
+function tr(key) {
+  return get(t)(key);
+}
 
 // Report a failure into the Rust log. The webview console is invisible from
 // outside the app in a release build, so the log file is the only channel that
@@ -26,7 +35,7 @@ function showFatal(message) {
   if (root) {
     root.innerHTML =
       '<div style="padding:16px;font:12px/1.5 Segoe UI,system-ui,sans-serif;color:#d13438">' +
-      "<b>Ошибка запуска интерфейса</b><br><br>" +
+      "<b>" + tr("fatal_title") + "</b><br><br>" +
       escapeHtml(message) +
       "</div>";
   }
@@ -40,7 +49,7 @@ let bannerEl = null;
 function showBanner(message) {
   if (!bannerEl) {
     bannerEl = document.createElement("div");
-    bannerEl.title = "Клик — скрыть";
+    bannerEl.title = tr("banner_dismiss");
     bannerEl.style.cssText =
       "position:fixed;left:0;right:0;top:0;z-index:2147483647;" +
       "background:#d13438;color:#fff;font:11px/1.45 Segoe UI,system-ui,sans-serif;" +
@@ -79,7 +88,7 @@ let mounted = false;
 
 // Register handlers BEFORE mounting so a synchronous init failure is captured.
 window.addEventListener("error", (e) => {
-  handleFailure(describe(e.error, e.message), "событие error");
+  handleFailure(describe(e.error, e.message), tr("err_event"));
 });
 
 window.addEventListener("unhandledrejection", (e) => {

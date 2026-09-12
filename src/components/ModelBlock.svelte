@@ -1,5 +1,6 @@
 <script>
   import { state } from "../store";
+  import { t, formatInt } from "../i18n";
 
   export let expanded = false;
 
@@ -11,16 +12,16 @@
   $: displayName = m.name
     ? m.name.replace(/.*[/\\]/, "")
     : m.loaded
-      ? "Нет загруженной модели"
-      : "Модель не определена";
+      ? $t("model_none_loaded")
+      : $t("model_unknown");
 
   // The full path, kept for reference below the name.
   $: displayPath = m.path || (m.name && (m.name.match(/^(.*[/\\])/) || ["", ""])[1]);
 
   $: metaParts = [
-    m.contextSize ? `ctx ${m.contextSize.toLocaleString("ru-RU")}` : null,
+    m.contextSize ? $t("model_ctx", { n: formatInt(m.contextSize) }) : null,
     m.quantization ? m.quantization : null,
-    m.loaded ? "готов" : null,
+    m.loaded ? $t("model_ready") : null,
   ].filter(Boolean);
 </script>
 

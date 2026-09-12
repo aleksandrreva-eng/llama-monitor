@@ -1,5 +1,6 @@
 <script>
   import { state } from "../store";
+  import { t } from "../i18n";
 
   export let expanded = false;
   export let diagnostics = [];
@@ -15,14 +16,14 @@
   function relativeTime(ts) {
     if (!ts) return "—";
     const sec = Math.round((now - ts) / 1000);
-    if (sec < 5) return "только что";
-    if (sec < 60) return `${sec} сек назад`;
+    if (sec < 5) return $t("time_just_now");
+    if (sec < 60) return $t("time_sec_ago", { sec });
     const min = Math.round(sec / 60);
-    if (min < 60) return `${min} мин назад`;
-    return "давно";
+    if (min < 60) return $t("time_min_ago", { min });
+    return $t("time_long_ago");
   }
 
-  $: updateText = s.lastUpdate ? `Обновлено ${relativeTime(s.lastUpdate)}` : "—";
+  $: updateText = s.lastUpdate ? $t("updated", { t: relativeTime(s.lastUpdate) }) : "—";
 </script>
 
 <div class="footer">
@@ -34,14 +35,14 @@
     {#each diagnostics as d}
       <div>{d}</div>
     {:else}
-      <div class="hint">Источник: /metrics + /props · Ошибок: 0</div>
+      <div class="hint">{$t("diag_source")}</div>
     {/each}
   </div>
 
   <div class="footer-actions">
-    <button on:click={onToggleSettings}>Настройки</button>
-    <button on:click={onShowLogs}>Логи</button>
-    <button on:click={onClickTray}>Свернуть</button>
+    <button on:click={onToggleSettings}>{$t("btn_settings")}</button>
+    <button on:click={onShowLogs}>{$t("btn_logs")}</button>
+    <button on:click={onClickTray}>{$t("btn_minimize")}</button>
   </div>
 {/if}
 
