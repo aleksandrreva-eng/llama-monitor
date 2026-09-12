@@ -150,6 +150,16 @@ fn main() -> anyhow::Result<()> {
                 // Windows and the icon appears unresponsive.
                 .show_menu_on_left_click(false)
                 .tooltip("llama.cpp Monitor")
+                // Explicitly set the icon. We no longer rely on the
+                // `app.trayIcon` config (it auto-spawns a duplicate tray), so
+                // without this the tray would have no image and only its empty,
+                // clickable slot would show. The bundled app icon is embedded,
+                // so this works in both dev and the installed MSI.
+                .icon(
+                    app.default_window_icon()
+                        .cloned()
+                        .expect("default window icon is missing from the bundle"),
+                )
                 .build(app)?;
 
             // Toggle the main widget: hide it when visible, otherwise show +
