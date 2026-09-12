@@ -2,7 +2,8 @@
 name = "llama-monitor"
 version = "0.1.0"
 description = "llama.cpp server monitoring widget for Windows 11"
-authors = ["you"]
+authors = ["aleksandrreva-eng"]
+license = "MIT"
 edition = "2021"
 
 [build-dependencies]
