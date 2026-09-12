@@ -180,7 +180,7 @@ UI (Svelte) -> State -> Monitoring Service -> Data Adapters -> Calculator
 - **Metrics Calculator** — расчёт контекста, скоростей (скользящее среднее), статусов.
 - **Config / Logging / Error Handling** — сохранение настроек, локальные логи (без секретов), единая политика деградации.
 
-Подробнее — см. [`docs/design.md`](../docs/design.md).
+Подробнее — см. [`docs/design.md`](docs/design.md).
 
 ---
 
