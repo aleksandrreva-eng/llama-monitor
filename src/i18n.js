@@ -33,6 +33,10 @@ export const dictionaries = {
     ctx_remaining: "Осталось",
     ctx_tip: "Всего: {total} · Потрачено: {used} · Осталось: {remaining} · Заполнено: {pct}%",
 
+    // --- MetricsBlock ---
+    metrics_title: "Метрики /metrics",
+    metrics_empty: "Сервер не предоставляет /metrics. Запустите llama.cpp с --metrics.",
+
     // --- Footer ---
     time_just_now: "только что",
     time_sec_ago: "{sec} сек назад",
@@ -138,6 +142,10 @@ export const dictionaries = {
     ctx_used: "Used",
     ctx_remaining: "Remaining",
     ctx_tip: "Total: {total} · Used: {used} · Remaining: {remaining} · Filled: {pct}%",
+
+    // --- MetricsBlock ---
+    metrics_title: "/metrics",
+    metrics_empty: "The server doesn't expose /metrics. Start llama.cpp with --metrics.",
 
     // --- Footer ---
     time_just_now: "just now",

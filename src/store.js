@@ -17,6 +17,7 @@ const EMPTY_STATE = {
   prefillSpeed: { current: null, avg30s: null, available: false, splitAvailable: false },
   generationSpeed: { current: null, avg30s: null, available: false, splitAvailable: false },
   model: { name: null, contextSize: null, loaded: false, quantization: null, path: null, version: null },
+  otherMetrics: [],
   diagnostics: [],
 };
 
@@ -34,6 +35,7 @@ export function mergeState(payload) {
     prefillSpeed: nested("prefillSpeed"),
     generationSpeed: nested("generationSpeed"),
     model: nested("model"),
+    otherMetrics: Array.isArray(payload.otherMetrics) ? payload.otherMetrics : [],
     diagnostics: Array.isArray(payload.diagnostics) ? payload.diagnostics : [],
   };
 }

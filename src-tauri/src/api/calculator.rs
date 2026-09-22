@@ -122,6 +122,7 @@ pub fn calculate(
         prefill_speed: prefill,
         generation_speed: generation,
         model: snap.model.clone(),
+        other_metrics: snap.other_metrics.clone(),
         diagnostics: diagnostics.clone(),
     };
 

@@ -4,6 +4,7 @@
   import ContextBar from "./components/ContextBar.svelte";
   import SpeedBlock from "./components/SpeedBlock.svelte";
   import ModelBlock from "./components/ModelBlock.svelte";
+  import MetricsBlock from "./components/MetricsBlock.svelte";
   import Footer from "./components/Footer.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
   import { state, ui, settings, pushLog, initTauri, onTrayEvent } from "./store";
@@ -163,6 +164,7 @@
     <ContextBar {expanded} />
     <SpeedBlock {expanded} />
     <ModelBlock {expanded} />
+    <MetricsBlock {expanded} />
   </div>
 
   <Footer

@@ -70,26 +70,41 @@ pub struct ModelMetric {
     pub version: Option<String>,
 }
 
+/// A single raw llama.cpp `/metrics` counter or gauge shown in the expanded view.
+///
+/// Names are stripped of the `llamacpp:` Prometheus namespace prefix at the parse
+/// site so the UI label map works against bare metric names.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RawMetric {
+    pub name: String,
+    pub value: f64,
+}
+
 /// Full monitoring state pushed to the UI.
 ///
 /// Wire format is camelCase, matching the Svelte store's declared shape. Do not
-/// drop this attribute: the UI reads `lastUpdate` / `prefillSpeed` /
-/// `generationSpeed` / `serverLabel`, and a mismatch makes them `undefined`,
-/// which blanks the whole widget on the first update (see the contract test).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MonitoringState {
-    pub connection: ConnectionStatus,
-    pub last_update: Option<i64>,
-    pub server_label: Option<String>,
-    pub context: ContextMetric,
-    pub prefill_speed: SpeedMetric,
-    pub generation_speed: SpeedMetric,
-    pub model: ModelMetric,
-    /// Human-readable diagnostics shown in the expanded view.
-    #[allow(dead_code)]
-    pub diagnostics: Vec<String>,
-}
+    /// drop this attribute: the UI reads `lastUpdate` / `prefillSpeed` /
+    /// `generationSpeed` / `serverLabel`, and a mismatch makes them `undefined`,
+    /// which blanks the whole widget on the first update (see the contract test).
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MonitoringState {
+        pub connection: ConnectionStatus,
+        pub last_update: Option<i64>,
+        pub server_label: Option<String>,
+        pub context: ContextMetric,
+        pub prefill_speed: SpeedMetric,
+        pub generation_speed: SpeedMetric,
+        pub model: ModelMetric,
+        /// Raw llama.cpp `/metrics` counters/gauges (e.g. prompt tokens total,
+        /// n_decode_total) surfaced in the expanded view. Empty unless the server
+        /// exposes `--metrics`.
+        pub other_metrics: Vec<RawMetric>,
+        /// Human-readable diagnostics shown in the expanded view.
+        #[allow(dead_code)]
+        pub diagnostics: Vec<String>,
+    }
 
 impl Default for MonitoringState {
     fn default() -> Self {
@@ -101,6 +116,7 @@ impl Default for MonitoringState {
             prefill_speed: SpeedMetric::default(),
             generation_speed: SpeedMetric::default(),
             model: ModelMetric::default(),
+            other_metrics: vec![],
             diagnostics: vec![],
         }
     }
@@ -129,6 +145,7 @@ mod tests {
             "prefillSpeed",
             "generationSpeed",
             "model",
+            "otherMetrics",
             "diagnostics",
         ];
         let actual: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
@@ -138,6 +155,18 @@ mod tests {
                 "MonitoringState is missing wire key `{key}`; got {actual:?}"
             );
         }
+
+        // RawMetric must serialize with the exact keys the expanded-view block
+        // indexes: `name` + `value`. Kept here so a rename in the struct blanks
+        // the grid with no test coverage to catch it.
+        let raw = RawMetric {
+            name: "prompt_tokens_total".to_string(),
+            value: 25.0,
+        };
+        assert_eq!(
+            serde_json::to_value(raw).unwrap(),
+            serde_json::json!({ "name": "prompt_tokens_total", "value": 25.0 })
+        );
 
         // ConnectionStatus must be snake_case so `STATUS_CLASS` can index it.
         assert_eq!(obj["connection"], serde_json::json!("disconnected"));

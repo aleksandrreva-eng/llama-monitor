@@ -396,9 +396,79 @@ pub struct ParsedSnapshot {
     pub prefill_speed: SpeedMetric,
     pub generation_speed: SpeedMetric,
     pub model: ModelMetric,
+    /// Raw llama.cpp `/metrics` counters/gauges for the expanded view. Empty
+    /// unless the server exposes `--metrics` (see [`collect_other_metrics`]).
+    pub other_metrics: Vec<RawMetric>,
     pub server_label: Option<String>,
     pub timestamp_ms: i64,
     pub diagnostics: Vec<String>,
+}
+
+/// Collect every llama.cpp `/metrics` counter/gauge for the expanded view.
+///
+/// Unlike the context and speed cards — which only surface a handful of derived
+/// values — this returns **all** metric families the server exposes under
+/// `--metrics`. The prompt/generation speed cards already consume
+/// `prompt_seconds_total` and `predicted_seconds_total`, so those are dropped
+/// here (the user sees them on the SpeedBlock cards) and the rest are rendered
+/// as-is in the expanded metrics grid.
+///
+/// The Prometheus text format prefixes every metric with the `llamacpp:`
+/// namespace and appends a label set, e.g. `llamacpp:n_slots_busy{slot="0"} 1`.
+/// The namespace prefix and any label set are stripped, leaving a bare metric
+/// name (`n_slots_busy`) plus its value — so the grid shows the same clean keys
+/// whether the build uses the Prometheus or the JSON `/metrics` format.
+///
+/// When a metric family has several labelled series (e.g. per-slot counters),
+/// only the first series' value is kept; the value is stored exactly as parsed
+/// (no smoothing) since it is purely informational.
+///
+/// `prompt_seconds_total` and `predicted_seconds_total` are cumulative
+/// wall-clock-second counters; the remaining metrics are cumulative token
+/// counts or live gauges.
+pub fn collect_other_metrics(map: &std::collections::HashMap<String, f64>) -> Vec<RawMetric> {
+    // Order-preserving set: keeps Prometheus declaration order and skips the
+    // per-request speed totals that already live on the SpeedBlock cards.
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+
+    for (raw_key, value) in map {
+        // Skip the two speed totals already shown on the speed cards.
+        if matches!(raw_key.as_str(), "prompt_seconds_total" | "predicted_seconds_total")
+            || matches!(raw_key.as_str(), "llamacpp:prompt_seconds_total" | "llamacpp:predicted_seconds_total")
+        {
+            continue;
+        }
+
+        let key = strip_namespace_and_labels(raw_key);
+        if key.is_empty() || !seen.insert(key.clone()) {
+            continue;
+        }
+        out.push(RawMetric {
+            name: key,
+            value: *value,
+        });
+    }
+    out
+}
+
+/// Strip the `llamacpp:` Prometheus namespace prefix and any `{...}` label set
+/// from a raw metric key, returning the bare metric name.
+///
+/// Examples:
+/// - `llamacpp:n_slots_busy{slot="0"}` → `n_slots_busy`
+/// - `n_slots_busy` → `n_slots_busy`
+/// - `llamacpp:requests_processing` → `requests_processing`
+fn strip_namespace_and_labels(raw_key: &str) -> String {
+    let key = raw_key.trim();
+    // Drop the `llamacpp:` namespace prefix (Prometheus namespace).
+    let key = key
+        .strip_prefix("llamacpp:")
+        .unwrap_or(key)
+        .trim()
+        .to_string();
+    // Drop any trailing label set, e.g. `{slot="0",...}`.
+    key.split('{').next().unwrap_or("").trim().to_string()
 }
 
 /// Information extracted from the `/slots` endpoint.

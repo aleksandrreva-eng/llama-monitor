@@ -223,6 +223,7 @@ impl MonitoringService {
         //    failures (connection refused, 502 during model reload, timeouts) stay
         //    silent, otherwise every restart would flash a misleading warning.
         let mut got_metrics = false;
+        let mut metrics_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
         match Self::auth(client.get(format!("{base}/metrics")), api_key).send().await {
             Ok(resp) if resp.status().is_success() => {
                 let ct = resp
@@ -234,18 +235,18 @@ impl MonitoringService {
 
                 if ct.contains("text/plain") {
                     if let Ok(text) = resp.text().await {
-                        let map = parse_prometheus(&text);
-                        apply_metrics(&mut snap, &map);
+                        metrics_map = parse_prometheus(&text);
+                        apply_metrics(&mut snap, &metrics_map);
                         got_metrics = true;
                     }
                 } else {
                     // JSON-style metrics from alternative builds.
                     match resp.json::<MetricsResponse>().await {
                         Ok(json) => {
-                            let map = parse_json_metrics(&serde_json::Value::Object(
+                            metrics_map = parse_json_metrics(&serde_json::Value::Object(
                                 json.fields.into_iter().collect(),
                             ));
-                            apply_metrics(&mut snap, &map);
+                            apply_metrics(&mut snap, &metrics_map);
                             got_metrics = true;
                         }
                         Err(e) => {
@@ -271,7 +272,15 @@ impl MonitoringService {
             }
         }
 
-        // 5. Slots fallback (native endpoint, server root). Also queried when metrics are
+        // 5. Surface the raw llama.cpp /metrics counters (prompt tokens total,
+        // prompt seconds, predicted tokens, predicted seconds, n_decode_total,
+        // n_tokens_max, requests_processing, busy/decode) for the expanded view.
+        // These are informational — not consumed by the context/speed cards.
+        if got_metrics {
+            snap.other_metrics = collect_other_metrics(&metrics_map);
+        }
+
+        // 6. Slots fallback (native endpoint, server root). Also queried when metrics are
         //    available, because /slots is the only source of the live per-slot context usage.
         if let Ok(resp) = Self::auth(client.get(format!("{base}/slots")), api_key).send().await {
             if resp.status().is_success() {
