@@ -227,3 +227,11 @@ MIT — full text in [`LICENSE`](LICENSE).
 You may freely use, modify, distribute, and embed the code in your own projects,
 including commercially. The only condition is to keep the license text and
 attribution in copies or substantial portions of the software.
+
+---
+
+## Support
+
+This project is developed in my spare time. If you find it useful, you can support its development:
+
+[YooMoney](https://yoomoney.ru/fundraise/1KJLC8PV82S.260929)
