@@ -4,6 +4,9 @@
 //! - `null` means "unknown / unavailable", never a real zero.
 //! - `available: false` tells the UI to render a placeholder ("N/A"), not a crash.
 //! - `remaining` is always clamped to >= 0.
+//! - Every user-visible string that originates here is a **code**, not prose:
+//!   the frontend owns translation (see [`Diag`]). The Rust side never ships a
+//!   Russian sentence across the wire.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,17 +26,87 @@ pub enum ConnectionStatus {
     MetricsUnavailable,
 }
 
-impl ConnectionStatus {
-    pub fn label(self) -> &'static str {
+/// A machine-readable diagnostic code.
+///
+/// Carries no prose: the UI resolves `code()` through its own i18n dictionary
+/// (`diag_<code>`), so the diagnostics block is localized like the rest of the
+/// widget. `detail` is only used for values that cannot be translated (an OS or
+/// network error string) and is rendered as-is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagCode {
+    /// Server is reachable but reports no context usage.
+    ContextUnknown,
+    /// No prefill throughput reading is available.
+    PrefillUnavailable,
+    /// No generation throughput reading is available.
+    GenerationUnavailable,
+    /// No model name could be determined from any source.
+    ModelUnknown,
+    /// Speeds are present but the server does not split prefill from generation.
+    SplitUnavailable,
+    /// The values on screen are older than the freshness threshold.
+    Stale,
+    /// The server is up but has no request in flight.
+    ServerIdle,
+    /// `/metrics` answered 501/404 — the server runs without `--metrics`.
+    MetricsDisabled,
+    /// A vLLM endpoint answered, but without the expected `vllm:` metric family.
+    VllmMetricsMissing,
+    /// Ollama is up but reports no running model.
+    OllamaNoModels,
+    /// The poll failed. `detail` carries the untranslatable transport/HTTP error.
+    PollFailed(String),
+}
+
+impl DiagCode {
+    /// Stable wire code. Must stay in sync with `diag_*` keys in `src/i18n.js`
+    /// and with the `DIAG_*` lookups in the Svelte components.
+    pub fn code(&self) -> &'static str {
         match self {
-            ConnectionStatus::Connected => "Подключено",
-            ConnectionStatus::Connecting => "Подключение",
-            ConnectionStatus::Disconnected => "Нет соединения",
-            ConnectionStatus::Error => "Ошибка данных",
-            ConnectionStatus::Stale => "Данные устарели",
-            ConnectionStatus::ServerUnavailable => "Сервер недоступен",
-            ConnectionStatus::MetricsUnavailable => "Метрики недоступны",
+            DiagCode::ContextUnknown => "context_unknown",
+            DiagCode::PrefillUnavailable => "prefill_unavailable",
+            DiagCode::GenerationUnavailable => "generation_unavailable",
+            DiagCode::ModelUnknown => "model_unknown",
+            DiagCode::SplitUnavailable => "split_unavailable",
+            DiagCode::Stale => "stale",
+            DiagCode::ServerIdle => "server_idle",
+            DiagCode::MetricsDisabled => "metrics_disabled",
+            DiagCode::VllmMetricsMissing => "vllm_metrics_missing",
+            DiagCode::OllamaNoModels => "ollama_no_models",
+            DiagCode::PollFailed(_) => "poll_failed",
         }
+    }
+
+    /// Untranslatable payload, if any.
+    pub fn detail(&self) -> Option<String> {
+        match self {
+            DiagCode::PollFailed(e) => Some(e.clone()),
+            _ => None,
+        }
+    }
+}
+
+/// Wire form of a diagnostic: `{ "code": "...", "detail": "..."? }`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diag {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl From<&DiagCode> for Diag {
+    fn from(d: &DiagCode) -> Self {
+        Diag {
+            code: d.code().to_string(),
+            detail: d.detail(),
+        }
+    }
+}
+
+impl From<DiagCode> for Diag {
+    fn from(d: DiagCode) -> Self {
+        Diag::from(&d)
     }
 }
 
@@ -84,27 +157,27 @@ pub struct RawMetric {
 /// Full monitoring state pushed to the UI.
 ///
 /// Wire format is camelCase, matching the Svelte store's declared shape. Do not
-    /// drop this attribute: the UI reads `lastUpdate` / `prefillSpeed` /
-    /// `generationSpeed` / `serverLabel`, and a mismatch makes them `undefined`,
-    /// which blanks the whole widget on the first update (see the contract test).
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct MonitoringState {
-        pub connection: ConnectionStatus,
-        pub last_update: Option<i64>,
-        pub server_label: Option<String>,
-        pub context: ContextMetric,
-        pub prefill_speed: SpeedMetric,
-        pub generation_speed: SpeedMetric,
-        pub model: ModelMetric,
-        /// Raw llama.cpp `/metrics` counters/gauges (e.g. prompt tokens total,
-        /// n_decode_total) surfaced in the expanded view. Empty unless the server
-        /// exposes `--metrics`.
-        pub other_metrics: Vec<RawMetric>,
-        /// Human-readable diagnostics shown in the expanded view.
-        #[allow(dead_code)]
-        pub diagnostics: Vec<String>,
-    }
+/// drop this attribute: the UI reads `lastUpdate` / `prefillSpeed` /
+/// `generationSpeed` / `serverLabel`, and a mismatch makes them `undefined`,
+/// which blanks the whole widget on the first update (see the contract test).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitoringState {
+    pub connection: ConnectionStatus,
+    pub last_update: Option<i64>,
+    pub server_label: Option<String>,
+    pub context: ContextMetric,
+    pub prefill_speed: SpeedMetric,
+    pub generation_speed: SpeedMetric,
+    pub model: ModelMetric,
+    /// Raw llama.cpp `/metrics` counters/gauges (e.g. prompt tokens total,
+    /// n_decode_total) surfaced in the expanded view. Empty unless the server
+    /// exposes `--metrics`.
+    pub other_metrics: Vec<RawMetric>,
+    /// Localizable diagnostics shown in the expanded view and consumed by
+    /// `SpeedBlock` to explain a missing reading. Codes only — see [`Diag`].
+    pub diagnostics: Vec<Diag>,
+}
 
 impl Default for MonitoringState {
     fn default() -> Self {
@@ -204,9 +277,9 @@ mod tests {
             ),
         ];
         for (wire, rust_field, keys) in nested {
-            let inner = obj[wire]
-                .as_object()
-                .unwrap_or_else(|| panic!("`{wire}` (Rust field `{rust_field}`) must be an object"));
+            let inner = obj[wire].as_object().unwrap_or_else(|| {
+                panic!("`{wire}` (Rust field `{rust_field}`) must be an object")
+            });
             for key in keys {
                 assert!(
                     inner.contains_key(*key),
@@ -235,5 +308,44 @@ mod tests {
                 "ConnectionStatus::{status:?} must serialize as `{wire}`"
             );
         }
+    }
+
+    /// Diagnostics must reach the UI as `{code, detail?}` objects. The frontend
+    /// builds its i18n key as `diag_<code>`, so a code that is not a stable
+    /// snake_case identifier would render as a raw key in the panel.
+    #[test]
+    fn diagnostics_serialize_as_code_objects() {
+        let codes = [
+            DiagCode::ContextUnknown,
+            DiagCode::PrefillUnavailable,
+            DiagCode::GenerationUnavailable,
+            DiagCode::ModelUnknown,
+            DiagCode::SplitUnavailable,
+            DiagCode::Stale,
+            DiagCode::ServerIdle,
+            DiagCode::MetricsDisabled,
+            DiagCode::VllmMetricsMissing,
+            DiagCode::OllamaNoModels,
+            DiagCode::PollFailed("boom".to_string()),
+        ];
+        for code in &codes {
+            let wire = code.code();
+            assert!(
+                !wire.is_empty() && wire.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "diagnostic code `{wire}` must be a snake_case identifier"
+            );
+            let v = serde_json::to_value(Diag::from(code)).unwrap();
+            assert_eq!(v["code"], serde_json::json!(wire));
+            assert_eq!(v.get("detail").is_some(), code.detail().is_some());
+        }
+
+        // The i18n key is derived on the frontend as `diag_<code>`; the list is
+        // asserted against the enum length so a new variant cannot be added
+        // without deciding on its translation.
+        assert_eq!(
+            codes.len(),
+            11,
+            "keep DiagCode and i18n diag_* keys in sync"
+        );
     }
 }

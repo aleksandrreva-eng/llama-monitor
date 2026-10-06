@@ -110,9 +110,18 @@ impl ServerProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    // --- legacy single-server fields (migrated into `servers`; kept for load) ---
+    // --- legacy single-server fields (read once by `migrate`, then cleared) ---
+    //
+    // These are never written back: they exist only so an old settings file can
+    // be upgraded in place. `skip_serializing` keeps them out of the file and
+    // out of the payload the UI receives, so the frontend cannot accidentally
+    // treat a dead field as a live setting (the same trap that made
+    // `default_compact` look functional while nothing read it).
+    #[serde(skip_serializing)]
     pub server_host: String,
+    #[serde(skip_serializing)]
     pub server_port: u16,
+    #[serde(skip_serializing)]
     pub base_path: String,
     // --- multi-server model ---
     /// Known server profiles (local, remote, cloud).
@@ -134,10 +143,19 @@ pub struct Settings {
     pub show_last_update: bool,
     pub verbose_logging: bool,
     // optional
+    /// Legacy top-level key, superseded by `ServerProfile::api_key`.
+    #[serde(skip_serializing)]
     pub api_key: Option<String>,
+    /// Legacy top-level label, superseded by `ServerProfile::label`.
+    #[serde(skip_serializing)]
     pub server_label: Option<String>,
+    /// Context fill ratio (0..1) at which the context bar switches to its
+    /// warning colour.
     pub warning_threshold: f64,
+    /// Context fill ratio (0..1) at which the context bar switches to its
+    /// critical colour.
     pub critical_threshold: f64,
+    /// Length of the speed smoothing window, in seconds.
     pub smoothing_window_secs: u32,
     pub window_opacity: f64,
     /// Global hotkey to toggle the window (e.g. "CmdOrCtrl+Shift+M").
@@ -307,7 +325,9 @@ impl Settings {
         // is wrong for llama.cpp's native endpoints. Files still holding the untouched
         // default `/v1` are rewritten to the empty root.
         if self.base_path == "/v1" {
-            log::info!("migrating settings: base_path '/v1' -> '' (native endpoints live at the root)");
+            log::info!(
+                "migrating settings: base_path '/v1' -> '' (native endpoints live at the root)"
+            );
             self.base_path = String::new();
             changed = true;
         }
@@ -322,7 +342,13 @@ impl Settings {
                 } else {
                     self.server_host.as_str()
                 },
-                self.server_port,
+                // A legacy file that predates the field, or one already partially
+                // migrated, can carry port 0 — which is not a usable port.
+                if self.server_port == 0 {
+                    8080
+                } else {
+                    self.server_port
+                },
                 self.base_path.trim_end_matches('/')
             );
             let label = self
@@ -350,14 +376,61 @@ impl Settings {
     }
 
     /// Persist settings to disk.
+    ///
+    /// Written through a temporary file in the same directory and then renamed:
+    /// a plain `write` truncates first, so a crash or a power loss mid-write left
+    /// a truncated JSON file, and the loader then silently fell back to defaults
+    /// — the user's whole configuration, including server profiles and API keys,
+    /// was gone. `rename` over an existing file is atomic on Windows (unlike
+    /// POSIX it replaces the target, but it never leaves a partial file behind).
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::settings_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, json)?;
+        match std::fs::rename(&tmp, &path) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Do not leave the scratch file behind on failure.
+                let _ = std::fs::remove_file(&tmp);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Clamp values that come straight from free-text inputs.
+    ///
+    /// The settings panel writes on every keystroke, so intermediate values
+    /// (`0`, an empty field, a half-typed `50000`) reach the backend. Without
+    /// this, a `0` poll interval would spin the loop and an inverted threshold
+    /// pair would make the context bar jump straight to red.
+    pub fn sanitize(&mut self) {
+        self.poll_interval_ms = self.poll_interval_ms.clamp(250, 600_000);
+        self.request_timeout_ms = self.request_timeout_ms.clamp(250, 120_000);
+        self.smoothing_window_secs = self.smoothing_window_secs.clamp(1, 600);
+        self.window_opacity = self.window_opacity.clamp(0.3, 1.0);
+
+        // Keep the pair ordered and inside 0..1 whatever the user typed.
+        let warn = if self.warning_threshold.is_finite() {
+            self.warning_threshold.clamp(0.0, 1.0)
+        } else {
+            0.75
+        };
+        let crit = if self.critical_threshold.is_finite() {
+            self.critical_threshold.clamp(0.0, 1.0)
+        } else {
+            0.9
+        };
+        self.warning_threshold = warn.min(crit);
+        self.critical_threshold = warn.max(crit);
+
+        for p in &mut self.servers {
+            p.url = p.url.trim().to_string();
+        }
     }
 
     /// Reset to defaults and persist.
@@ -498,8 +571,111 @@ mod tests {
     #[test]
     fn migrate_leaves_existing_servers_alone() {
         let mut s = Settings::default();
-        s.servers.push(profile_with_url("http://example:1234", ServerKind::Vllm));
+        s.servers
+            .push(profile_with_url("http://example:1234", ServerKind::Vllm));
         assert!(!s.migrate());
         assert_eq!(s.servers.len(), 2);
+    }
+
+    /// A legacy file that predates `server_port` (or was already half-migrated)
+    /// carries port 0, which must not end up in the profile URL.
+    #[test]
+    fn legacy_migration_replaces_a_zero_port() {
+        let legacy = r#"{ "server_host": "10.0.0.5", "server_port": 0 }"#;
+        let mut s: Settings = serde_json::from_str(legacy).expect("must parse");
+        assert!(s.migrate());
+        assert_eq!(s.servers[0].url, "http://10.0.0.5:8080");
+    }
+
+    /// Legacy fields exist to be read once during migration. They must not be
+    /// written back, or the UI would keep seeing dead settings it cannot change.
+    #[test]
+    fn legacy_fields_are_not_serialized() {
+        let v = serde_json::to_value(Settings::default()).unwrap();
+        let obj = v.as_object().expect("settings serialize to an object");
+        for dead in [
+            "server_host",
+            "server_port",
+            "base_path",
+            "api_key",
+            "server_label",
+        ] {
+            assert!(
+                !obj.contains_key(dead),
+                "top-level legacy field `{dead}` must not be serialized"
+            );
+        }
+
+        // The per-profile `api_key` is a LIVE field and must still be written.
+        let profile = obj["servers"][0]
+            .as_object()
+            .expect("a profile serializes to an object");
+        assert!(profile.contains_key("api_key"));
+        assert!(profile.contains_key("url"));
+
+        // The live top-level fields are unaffected.
+        for live in ["servers", "active_server_id", "smoothing_window_secs"] {
+            assert!(obj.contains_key(live), "`{live}` must be serialized");
+        }
+    }
+
+    /// A legacy file must still *parse* even though we no longer write those
+    /// fields — reading is the whole point of keeping them.
+    #[test]
+    fn legacy_fields_still_deserialize() {
+        let legacy = r#"{
+            "server_host": "192.168.1.50",
+            "server_port": 9000,
+            "base_path": "/v1",
+            "api_key": "sekret",
+            "server_label": "Workstation"
+        }"#;
+        let s: Settings = serde_json::from_str(legacy).expect("legacy fields must still parse");
+        assert_eq!(s.server_host, "192.168.1.50");
+        assert_eq!(s.server_port, 9000);
+        assert_eq!(s.api_key.as_deref(), Some("sekret"));
+    }
+
+    #[test]
+    fn sanitize_clamps_free_text_input() {
+        let mut s = Settings::default();
+        s.poll_interval_ms = 0;
+        s.request_timeout_ms = 999_999;
+        s.smoothing_window_secs = 0;
+        s.window_opacity = 12.0;
+        s.sanitize();
+        assert_eq!(s.poll_interval_ms, 250);
+        assert_eq!(s.request_timeout_ms, 120_000);
+        assert_eq!(s.smoothing_window_secs, 1);
+        assert_eq!(s.window_opacity, 1.0);
+    }
+
+    /// The two context thresholds must stay ordered and inside 0..1 even if the
+    /// user inverts them — the bar would otherwise jump straight to red.
+    #[test]
+    fn sanitize_keeps_thresholds_ordered_and_bounded() {
+        let mut s = Settings::default();
+        s.warning_threshold = 2.0;
+        s.critical_threshold = -1.0;
+        s.sanitize();
+        assert!((0.0..=1.0).contains(&s.warning_threshold));
+        assert!((0.0..=1.0).contains(&s.critical_threshold));
+        assert!(s.warning_threshold <= s.critical_threshold);
+
+        // Non-finite values fall back to the defaults instead of poisoning the UI.
+        let mut s = Settings::default();
+        s.warning_threshold = f64::NAN;
+        s.critical_threshold = f64::INFINITY;
+        s.sanitize();
+        assert_eq!(s.warning_threshold, 0.75);
+        assert_eq!(s.critical_threshold, 0.9);
+    }
+
+    #[test]
+    fn sanitize_trims_server_urls() {
+        let mut s = Settings::default();
+        s.servers[0].url = "  http://127.0.0.1:8080  ".to_string();
+        s.sanitize();
+        assert_eq!(s.servers[0].url, "http://127.0.0.1:8080");
     }
 }

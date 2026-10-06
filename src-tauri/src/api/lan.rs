@@ -118,7 +118,10 @@ async fn identify(host: Ipv4Addr, port: u16) -> Option<DiscoveredServer> {
     }
     // 4. OpenAI-compatible `/v1/models` (vLLM also serves this; vLLM was already
     //    ruled out via `/metrics` above, so treat the rest as generic Cloud).
-    if http_text(&client, &format!("{url}/v1/models")).await.is_some() {
+    if http_text(&client, &format!("{url}/v1/models"))
+        .await
+        .is_some()
+    {
         return Some(make(host, port, ServerKind::Cloud, &url));
     }
     // Open port but unrecognised: still report it as a generic local server so
@@ -141,11 +144,15 @@ fn make(host: Ipv4Addr, port: u16, kind: ServerKind, url: &str) -> DiscoveredSer
 /// port) and, for each open port, identifies the engine. The whole scan is
 /// capped at `timeout_ms` (default 9 s); whatever has been found so far is
 /// returned when the budget is exceeded.
-#[tauri::command]
-#[allow(non_snake_case)]
-pub async fn scan_lan(timeoutMs: Option<u64>) -> Vec<DiscoveredServer> {
+///
+/// `rename_all = "snake_case"` keeps the JS payload key (`timeout_ms`) equal to
+/// the Rust name — see the wire contract at the top of `api/mod.rs`. The
+/// parameter used to be spelled `timeoutMs` with an `allow(non_snake_case)` to
+/// satisfy the default camelCase conversion.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn scan_lan(timeout_ms: Option<u64>) -> Vec<DiscoveredServer> {
     let hosts = candidate_hosts();
-    let budget = Duration::from_millis(timeoutMs.unwrap_or(9000).max(2000));
+    let budget = Duration::from_millis(timeout_ms.unwrap_or(9000).max(2000));
     let semaphore = std::sync::Arc::new(Semaphore::new(200));
     let mut set = tokio::task::JoinSet::new();
     let mut results: Vec<DiscoveredServer> = Vec::new();

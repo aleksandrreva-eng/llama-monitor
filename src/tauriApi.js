@@ -2,17 +2,24 @@ import { invoke } from "@tauri-apps/api/core";
 import { settings, ui, pushLog, get } from "./store";
 import { syncLocaleFromSettings } from "./i18n";
 
+/// Mirror the persisted window options into the UI store. `default_compact` is
+/// NOT part of this: it seeds the widget's initial expanded state in App.svelte
+/// (writing it to `ui.compact` — which nothing read — was the reason the setting
+/// looked functional while doing nothing).
+function syncUi(s) {
+  ui.update((u) => ({
+    ...u,
+    alwaysOnTop: s.always_on_top,
+    theme: s.theme,
+    opacity: s.window_opacity,
+  }));
+}
+
 export async function loadSettings() {
   try {
     const s = await invoke("get_settings");
     settings.set(s);
-    ui.update((u) => ({
-      ...u,
-      compact: s.default_compact,
-      alwaysOnTop: s.always_on_top,
-      theme: s.theme,
-      opacity: s.window_opacity,
-    }));
+    syncUi(s);
     syncLocaleFromSettings(s.language);
   } catch (err) {
     pushLog("loadSettings error: " + err);
@@ -25,13 +32,7 @@ export async function saveSettings(patch) {
     const merged = { ...current, ...patch };
     await invoke("save_settings", { settings: merged });
     settings.set(merged);
-    ui.update((u) => ({
-      ...u,
-      compact: merged.default_compact,
-      alwaysOnTop: merged.always_on_top,
-      theme: merged.theme,
-      opacity: merged.window_opacity,
-    }));
+    syncUi(merged);
     pushLog("settings saved");
   } catch (err) {
     pushLog("saveSettings error: " + err);
@@ -42,13 +43,7 @@ export async function resetSettings() {
   try {
     const s = await invoke("reset_settings");
     settings.set(s);
-    ui.update((u) => ({
-      ...u,
-      compact: s.default_compact,
-      alwaysOnTop: s.always_on_top,
-      theme: s.theme,
-      opacity: s.window_opacity,
-    }));
+    syncUi(s);
     syncLocaleFromSettings(s.language);
     pushLog("settings reset");
   } catch (err) {
@@ -56,6 +51,9 @@ export async function resetSettings() {
   }
 }
 
+/// Apply runtime window options. Keys are snake_case because the command
+/// carries `rename_all = "snake_case"` — see the wire contract in
+/// `src-tauri/src/api/mod.rs` and `docs/wire-contract.md`.
 export async function setOptions(patch) {
   try {
     await invoke("set_options", patch);
@@ -98,9 +96,11 @@ export async function saveSize(w, h) {
 }
 
 /// Scan the LAN for inference servers and return discovered profiles.
+/// `timeout_ms` is snake_case because `scan_lan` carries
+/// `rename_all = "snake_case"` — see `docs/wire-contract.md`.
 export async function scanLan(timeoutMs = 9000) {
   try {
-    return await invoke("scan_lan", { timeoutMs });
+    return await invoke("scan_lan", { timeout_ms: timeoutMs });
   } catch (err) {
     pushLog("scanLan error: " + err);
     return [];

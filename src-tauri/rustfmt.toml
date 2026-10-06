@@ -1,0 +1,10 @@
+# rustfmt configuration.
+#
+# Kept deliberately close to the defaults: the point of `cargo fmt --check` in CI
+# is to stop formatting arguments from reaching the diff, not to impose a house
+# style. Only options that are stable on a released toolchain are used, so a
+# contributor with a plain `rustup` install gets identical output.
+edition = "2021"
+max_width = 100
+use_field_init_shorthand = true
+use_try_shorthand = true

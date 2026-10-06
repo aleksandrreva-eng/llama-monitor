@@ -8,16 +8,13 @@
 // attached in debug builds so `cargo tauri dev` keeps showing logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// The `diagnostics` field of `MonitoringState` is intentionally never read on
-// the Rust side — it is serialized and consumed by the Svelte frontend.
-#![allow(dead_code)]
-
 mod api;
 mod config;
 mod logging;
 mod monitoring;
+mod sync;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use config::Settings;
 use monitoring::MonitoringService;
@@ -28,9 +25,13 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
-/// Global application state.
+/// Global application state — the single owner of everything mutable at runtime.
 pub struct AppState {
     pub settings: Mutex<Settings>,
+    /// The background polling service. Held here (rather than in an `Arc`
+    /// captured by the `setup` closure) so the service has exactly one owner
+    /// and is reachable from commands, not just from the loop that spawned it.
+    pub monitoring: Arc<MonitoringService>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -39,6 +40,7 @@ fn main() -> anyhow::Result<()> {
 
     let app_state = AppState {
         settings: Mutex::new(settings.clone()),
+        monitoring: Arc::new(MonitoringService::new()),
     };
 
     // Global hotkey toggles the widget window (show/hide). The actual shortcut
@@ -79,8 +81,10 @@ fn main() -> anyhow::Result<()> {
             // Start the background monitoring service. It reads the live
             // settings (and the active server profile) from AppState every
             // poll, so switching servers / editing settings needs no restart.
-            let service = std::sync::Arc::new(MonitoringService::new());
-            service.spawn(app.app_handle().clone());
+            app.state::<AppState>()
+                .monitoring
+                .clone()
+                .spawn(app.app_handle().clone());
 
             // Create the main window.
             let window = WebviewWindow::builder(
@@ -110,10 +114,12 @@ fn main() -> anyhow::Result<()> {
             api::apply_window_options(app.app_handle(), &settings);
             api::sync_autostart(app.app_handle(), settings.autorun);
             log::info!(
-                "llama-monitor started; server={}:{}{} hotkey={:?}",
-                settings.server_host,
-                settings.server_port,
-                settings.base_path,
+                "llama-monitor started; server={} kind={} hotkey={:?}",
+                settings.base_url(),
+                settings
+                    .active_profile()
+                    .map(|p| p.kind.label())
+                    .unwrap_or("llama.cpp"),
                 settings.hotkey
             );
 
@@ -213,7 +219,6 @@ fn main() -> anyhow::Result<()> {
             api::set_options,
             api::save_position,
             api::save_size,
-            api::get_logs,
             api::read_logs,
             api::clear_logs,
             api::report_frontend_error,
@@ -231,8 +236,7 @@ fn main() -> anyhow::Result<()> {
             } = event
             {
                 if label == "main" {
-                    let minimize =
-                        app.state::<AppState>().settings.lock().unwrap().minimize_to_tray;
+                    let minimize = sync::lock(&app.state::<AppState>().settings).minimize_to_tray;
                     if minimize {
                         api.prevent_close();
                         if let Some(w) = app.get_webview_window("main") {

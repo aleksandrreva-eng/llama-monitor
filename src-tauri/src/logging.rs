@@ -4,17 +4,31 @@
 //! them to stderr (handy during `tauri:dev`). Debug/Trace are gated by the
 //! `verbose_logging` setting. Callers must never log secrets — this module
 //! only formats what it is given.
+//!
+//! The file is capped at [`MAX_LOG_BYTES`]: a widget that runs for weeks must
+//! not grow a log until the disk fills.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use chrono::Local;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
+use crate::sync::lock;
+
 static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Hard cap on the log file size. On exceeding it the file is truncated and a
+/// marker line is written, so the newest entries always survive.
+const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Whether writing `next_len` more bytes would push the file past the cap.
+fn should_truncate(current_bytes: u64, next_len: usize) -> bool {
+    current_bytes.saturating_add(next_len as u64) > MAX_LOG_BYTES
+}
 
 /// Enable/disable Debug+Trace logging at runtime.
 pub fn set_verbose(v: bool) {
@@ -87,6 +101,10 @@ pub fn open() -> std::io::Result<File> {
 
 struct FileLogger {
     file: Mutex<File>,
+    /// Approximate number of bytes written so far. Tracked in memory because
+    /// asking the filesystem on every line would be far more expensive than the
+    /// write itself.
+    bytes: AtomicU64,
 }
 
 impl Log for FileLogger {
@@ -112,18 +130,30 @@ impl Log for FileLogger {
             record.args()
         );
 
-        if let Ok(mut f) = self.file.lock() {
-            let _ = f.write_all(line.as_bytes());
-            let _ = f.flush();
+        let mut file = lock(&self.file);
+        let written = self.bytes.load(Ordering::Relaxed);
+        if should_truncate(written, line.len()) {
+            // Truncate instead of rotating to `.1`: the file is opened in append
+            // mode, so a zero-length file simply starts over, while a rotation
+            // would have to swap the handle out from under other threads.
+            if file.set_len(0).is_ok() {
+                self.bytes.store(0, Ordering::Relaxed);
+                let marker = format!("[... log truncated after {written} bytes ...]\n");
+                let _ = file.write_all(marker.as_bytes());
+            }
         }
+        if file.write_all(line.as_bytes()).is_ok() {
+            self.bytes.fetch_add(line.len() as u64, Ordering::Relaxed);
+        }
+        let _ = file.flush();
+        drop(file);
+
         // Mirror to stderr for development convenience.
         eprint!("{}", line);
     }
 
     fn flush(&self) {
-        if let Ok(mut f) = self.file.lock() {
-            let _ = f.flush();
-        }
+        let _ = lock(&self.file).flush();
     }
 }
 
@@ -132,8 +162,10 @@ pub fn init_file_logger(verbose: bool) {
     set_verbose(verbose);
     match open() {
         Ok(file) => {
+            let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
             let _ = log::set_boxed_logger(Box::new(FileLogger {
                 file: Mutex::new(file),
+                bytes: AtomicU64::new(bytes),
             }));
             log::set_max_level(LevelFilter::Trace);
         }
@@ -197,5 +229,16 @@ mod tests {
             .to_string_lossy()
             .to_string();
         assert_eq!(name, "llama-monitor.log");
+    }
+
+    /// The log must be capped, or a widget left running for weeks fills the disk.
+    #[test]
+    fn log_size_is_capped() {
+        assert!(!should_truncate(0, 100));
+        assert!(!should_truncate(MAX_LOG_BYTES - 10, 10));
+        assert!(should_truncate(MAX_LOG_BYTES - 10, 11));
+        assert!(should_truncate(MAX_LOG_BYTES, 1));
+        // A pathologically long line must not overflow the arithmetic.
+        assert!(should_truncate(u64::MAX, 1));
     }
 }
