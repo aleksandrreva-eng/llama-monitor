@@ -1,16 +1,57 @@
+/* Theme tokens.
+ *
+ * Every colour a component needs lives here. Components must not carry literal
+ * `rgba(255, 255, 255, …)` / `#fff` pairs duplicated behind a
+ * `:global(:root[data-theme="light"])` override — that pattern meant a single
+ * colour tweak had to be made in five files, and the dark/light pair could
+ * silently drift apart.
+ *
+ * The block is repeated for forced-dark and auto-dark because CSS has no way to
+ * share a declaration block between a selector and a media query.
+ */
+
 :root,
 :root[data-theme="light"] {
-  /* Light theme (Win11 Fluent palette) */
+  /* --- surfaces ------------------------------------------------------- */
   --bg-primary: #f3f3f3;
   --bg-secondary: #ffffff;
   --bg-tertiary: #eaeaea;
+  --surface: rgba(243, 243, 243, 0.92);
+  --surface-border: rgba(0, 0, 0, 0.06);
+  --shadow-widget:
+    0 12px 40px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  /* 1px separators between widget sections */
+  --divider: rgba(0, 0, 0, 0.06);
+  /* recessed surfaces: progress track, tooltip, hover background */
+  --inset: rgba(0, 0, 0, 0.06);
+  --inset-strong: rgba(0, 0, 0, 0.08);
+  --control-bg: rgba(0, 0, 0, 0.03);
+  --control-bg-hover: rgba(0, 0, 0, 0.07);
+  --control-border: rgba(0, 0, 0, 0.12);
+
+  /* --- text ----------------------------------------------------------- */
   --text-primary: #1b1b1b;
   --text-secondary: #4a4a4a;
   --text-hint: #7a7a7a;
+  /* Numeric values, percentages, the header label */
+  --text-strong: #1a1a1a;
+  --text-body: rgba(0, 0, 0, 0.6);
+  --text-muted: rgba(0, 0, 0, 0.5);
+  --text-faint: rgba(0, 0, 0, 0.5);
+  --text-ghost: rgba(0, 0, 0, 0.22);
+  --text-path: rgba(0, 0, 0, 0.4);
+  --text-title: rgba(0, 0, 0, 0.45);
+  --text-label: rgba(0, 0, 0, 0.5);
+  --text-header: rgba(0, 0, 0, 0.75);
+  --text-icon: rgba(0, 0, 0, 0.55);
+  --text-icon-hover: #000;
+
   --border: rgba(0, 0, 0, 0.08);
   --border-strong: rgba(0, 0, 0, 0.16);
 
-  --status-connected: #107c10;
+  /* --- status --------------------------------------------------------- */
+  --status-connected: #16a34a;
   --status-connecting: #9d5bd0;
   --status-disconnected: #d13438;
   --status-error: #d13438;
@@ -22,10 +63,27 @@
   --warn: #8d5b00;
   --bad: #d13438;
 
+  /* --- speed accents -------------------------------------------------- */
+  --prefill: #ea580c;
+  --prefill-title: #c2410c;
+  --prefill-unit: #f97316;
+  --prefill-bg: rgba(234, 88, 12, 0.06);
+  --generation: #16a34a;
+  --generation-title: #15803d;
+  --generation-unit: #22c55e;
+  --generation-bg: rgba(22, 163, 74, 0.06);
+  /* Context bar colour once the fill passes the critical threshold */
+  --warn-text: #dc2626;
+  /* Pinned (always-on-top) header button */
+  --pin-bg: rgba(0, 120, 212, 0.15);
+  --pin-fg: #0078d4;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
   --radius-lg: 12px;
-  --radius-md: 8px;
   --font: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", Consolas, monospace;
 }
 
 /* Forced dark mode. */
@@ -33,12 +91,56 @@
   --bg-primary: #202020;
   --bg-secondary: #2b2b2b;
   --bg-tertiary: #333333;
+  --surface: rgba(32, 32, 32, 0.85);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --shadow-widget:
+    0 12px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --divider: rgba(255, 255, 255, 0.06);
+  --inset: rgba(255, 255, 255, 0.08);
+  --inset-strong: rgba(255, 255, 255, 0.16);
+  --control-bg: rgba(255, 255, 255, 0.04);
+  --control-bg-hover: rgba(255, 255, 255, 0.1);
+  --control-border: rgba(255, 255, 255, 0.12);
+
   --text-primary: #f3f3f3;
   --text-secondary: #c8c8c8;
   --text-hint: #a0a0a0;
+  --text-strong: #fff;
+  --text-body: rgba(255, 255, 255, 0.65);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --text-faint: rgba(255, 255, 255, 0.45);
+  --text-ghost: rgba(255, 255, 255, 0.25);
+  --text-path: rgba(255, 255, 255, 0.35);
+  --text-title: rgba(255, 255, 255, 0.5);
+  --text-label: rgba(255, 255, 255, 0.55);
+  --text-header: rgba(255, 255, 255, 0.85);
+  --text-icon: rgba(255, 255, 255, 0.7);
+  --text-icon-hover: #fff;
+
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
+
+  --status-connected: #16a34a;
+  --status-connecting: #9d5bd0;
+  --status-disconnected: #d13438;
+  --status-error: #d13438;
+  --status-stale: #8d5b00;
+  --status-unavailable: #a1a1a1;
+
   --accent: #60cdff;
+
+  --prefill: #fb923c;
+  --prefill-title: #fdba74;
+  --prefill-unit: #fdba74;
+  --prefill-bg: rgba(251, 146, 60, 0.1);
+  --generation: #4ade80;
+  --generation-title: #86efac;
+  --generation-unit: #86efac;
+  --generation-bg: rgba(74, 222, 128, 0.1);
+  --warn-text: #f87171;
+  --pin-bg: rgba(0, 120, 212, 0.25);
+  --pin-fg: #4fc3f7;
 }
 
 /* Auto mode follows the OS setting (unless forced to light). */
@@ -47,12 +149,56 @@
     --bg-primary: #202020;
     --bg-secondary: #2b2b2b;
     --bg-tertiary: #333333;
+    --surface: rgba(32, 32, 32, 0.85);
+    --surface-border: rgba(255, 255, 255, 0.08);
+    --shadow-widget:
+      0 12px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --divider: rgba(255, 255, 255, 0.06);
+    --inset: rgba(255, 255, 255, 0.08);
+    --inset-strong: rgba(255, 255, 255, 0.16);
+    --control-bg: rgba(255, 255, 255, 0.04);
+    --control-bg-hover: rgba(255, 255, 255, 0.1);
+    --control-border: rgba(255, 255, 255, 0.12);
+
     --text-primary: #f3f3f3;
     --text-secondary: #c8c8c8;
     --text-hint: #a0a0a0;
+    --text-strong: #fff;
+    --text-body: rgba(255, 255, 255, 0.65);
+    --text-muted: rgba(255, 255, 255, 0.5);
+    --text-faint: rgba(255, 255, 255, 0.45);
+    --text-ghost: rgba(255, 255, 255, 0.25);
+    --text-path: rgba(255, 255, 255, 0.35);
+    --text-title: rgba(255, 255, 255, 0.5);
+    --text-label: rgba(255, 255, 255, 0.55);
+    --text-header: rgba(255, 255, 255, 0.85);
+    --text-icon: rgba(255, 255, 255, 0.7);
+    --text-icon-hover: #fff;
+
     --border: rgba(255, 255, 255, 0.08);
     --border-strong: rgba(255, 255, 255, 0.16);
+
+    --status-connected: #16a34a;
+    --status-connecting: #9d5bd0;
+    --status-disconnected: #d13438;
+    --status-error: #d13438;
+    --status-stale: #8d5b00;
+    --status-unavailable: #a1a1a1;
+
     --accent: #60cdff;
+
+    --prefill: #fb923c;
+    --prefill-title: #fdba74;
+    --prefill-unit: #fdba74;
+    --prefill-bg: rgba(251, 146, 60, 0.1);
+    --generation: #4ade80;
+    --generation-title: #86efac;
+    --generation-unit: #86efac;
+    --generation-bg: rgba(74, 222, 128, 0.1);
+    --warn-text: #f87171;
+    --pin-bg: rgba(0, 120, 212, 0.25);
+    --pin-fg: #4fc3f7;
   }
 }
 

@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "vite",
     "check:stores": "node scripts/check-store-refs.mjs",
-    "build": "node scripts/check-store-refs.mjs && vite build",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "check": "node scripts/check-store-refs.mjs && node scripts/check-i18n.mjs",
+    "build": "node scripts/check-store-refs.mjs && node scripts/check-i18n.mjs && vite build",
+    "format": "prettier --write \"src/**/*.{js,svelte,css}\" \"scripts/**/*.mjs\" index.html package.json",
+    "format:check": "prettier --check \"src/**/*.{js,svelte,css}\" \"scripts/**/*.mjs\" index.html package.json",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
@@ -20,6 +24,8 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
     "@tauri-apps/cli": "^2.11.4",
+    "prettier": "^3.9.9",
+    "prettier-plugin-svelte": "^3.2.6",
     "svelte": "^4.2.19",
     "vite": "^5.4.8"
   }

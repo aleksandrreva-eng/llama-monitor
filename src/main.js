@@ -26,7 +26,7 @@ function report(message) {
 }
 
 function escapeHtml(text) {
-  return text.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+  return text.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
 }
 
 // Pre-mount failures: the widget never rendered, so the error *is* the UI.
@@ -35,7 +35,9 @@ function showFatal(message) {
   if (root) {
     root.innerHTML =
       '<div style="padding:16px;font:12px/1.5 Segoe UI,system-ui,sans-serif;color:#d13438">' +
-      "<b>" + tr("fatal_title") + "</b><br><br>" +
+      "<b>" +
+      tr("fatal_title") +
+      "</b><br><br>" +
       escapeHtml(message) +
       "</div>";
   }

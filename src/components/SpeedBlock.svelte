@@ -1,6 +1,8 @@
 <script>
-  import { state } from "../store";
+  import { state, settings } from "../store";
   import { t } from "../i18n";
+  import { hasDiag } from "../lib/diagnostics";
+  import Section from "./Section.svelte";
 
   export let expanded = false;
 
@@ -10,6 +12,25 @@
 
   let pfHistory = [];
   let gnHistory = [];
+
+  // Drop the sparkline history when the monitored server changes. The Rust side
+  // resets its averaging window on a server switch, but the history lived only
+  // in this component — so the graph used to splice the previous upstream's
+  // speeds onto the new one's. `active_server_id` flips the moment the user
+  // picks a server, i.e. before the first poll of the new one arrives.
+  //
+  // The previous key is kept in a plain object rather than a `let`: a reactive
+  // block that both reads and writes a tracked variable is a self-cycle, which
+  // Svelte reports as a "cyclical dependency".
+  const tracker = { server: null };
+  $: {
+    const key = `${$settings?.active_server_id ?? ""}|${$state.serverLabel ?? ""}`;
+    if (key !== tracker.server) {
+      tracker.server = key;
+      pfHistory = [];
+      gnHistory = [];
+    }
+  }
 
   $: {
     const v = $state.prefillSpeed.current;
@@ -26,11 +47,13 @@
     const max = Math.max(...arr);
     const range = max - min || 1;
     const step = w / (arr.length - 1);
-    return arr.map((v, i) => {
-      const x = i * step;
-      const y = h - ((v - min) / range) * h;
-      return `${x},${y}`;
-    }).join(" ");
+    return arr
+      .map((v, i) => {
+        const x = i * step;
+        const y = h - ((v - min) / range) * h;
+        return `${x},${y}`;
+      })
+      .join(" ");
   }
 
   function fmt(v) {
@@ -41,19 +64,18 @@
   // Why a speed card has no number. A bare "—" is useless: the usual cause is a
   // server started without `--metrics` (the endpoint then answers 501 and this
   // build's /slots carries no timings either), and the user only sees the
-  // diagnostics block in expanded mode. Derive a short reason from the
-  // diagnostics the backend already sends so the compact view explains itself.
-  $: diags = $state.diagnostics || [];
-  $: hasDiag = (needle) =>
-    diags.some((d) => typeof d === "string" && d.includes(needle));
-  $: reason = hasDiag("нет --metrics")
+  // diagnostics block in expanded mode. The reason is derived from the
+  // diagnostic *codes* the backend sends — never from matching on localized
+  // prose, which broke as soon as the locale was switched to English.
+  $: diags = $state.diagnostics;
+  $: reason = hasDiag(diags, "metrics_disabled")
     ? $t("reason_no_metrics")
-    : hasDiag("простаивает")
+    : hasDiag(diags, "server_idle")
       ? $t("reason_no_generation")
       : $t("reason_no_data");
 </script>
 
-<div class="section">
+<Section>
   <div class="speed-grid">
     <div class="speed-card prefill">
       <div class="speed-title">
@@ -61,7 +83,9 @@
         {#if pf.available}<span class="live-dot"></span>{/if}
       </div>
       <div class="speed-value-row">
-        <div class="speed-value" class:na={!pf.available}>{pf.available ? fmt(pf.current) : "—"}</div>
+        <div class="speed-value" class:na={!pf.available}>
+          {pf.available ? fmt(pf.current) : "—"}
+        </div>
         {#if pf.available}<div class="speed-unit">tok/s</div>{/if}
       </div>
       {#if !pf.available}
@@ -71,9 +95,19 @@
         <div class="speed-avg">{$t("speed_avg", { v: fmt(pf.avg30s) })}</div>
       {/if}
       {#if expanded && pfHistory.length > 1}
-        <svg class="sparkline" width="100%" height="24" viewBox="0 0 300 24" preserveAspectRatio="none">
-          <polyline fill="none" stroke="#FB923C" stroke-width="1.5"
-            points={sparkPoints(pfHistory, 300, 24)}/>
+        <svg
+          class="sparkline"
+          width="100%"
+          height="24"
+          viewBox="0 0 300 24"
+          preserveAspectRatio="none"
+        >
+          <polyline
+            fill="none"
+            style="stroke: var(--prefill)"
+            stroke-width="1.5"
+            points={sparkPoints(pfHistory, 300, 24)}
+          />
         </svg>
         {#if pf.avg30s != null}
           <div class="speed-expanded-meta">{$t("speed_avg30", { v: fmt(pf.avg30s) })}</div>
@@ -87,7 +121,9 @@
         {#if gn.available}<span class="live-dot"></span>{/if}
       </div>
       <div class="speed-value-row">
-        <div class="speed-value" class:na={!gn.available}>{gn.available ? fmt(gn.current) : "—"}</div>
+        <div class="speed-value" class:na={!gn.available}>
+          {gn.available ? fmt(gn.current) : "—"}
+        </div>
         {#if gn.available}<div class="speed-unit">tok/s</div>{/if}
       </div>
       {#if !gn.available}
@@ -97,9 +133,19 @@
         <div class="speed-avg">{$t("speed_avg", { v: fmt(gn.avg30s) })}</div>
       {/if}
       {#if expanded && gnHistory.length > 1}
-        <svg class="sparkline" width="100%" height="24" viewBox="0 0 300 24" preserveAspectRatio="none">
-          <polyline fill="none" stroke="#4ADE80" stroke-width="1.5"
-            points={sparkPoints(gnHistory, 300, 24)}/>
+        <svg
+          class="sparkline"
+          width="100%"
+          height="24"
+          viewBox="0 0 300 24"
+          preserveAspectRatio="none"
+        >
+          <polyline
+            fill="none"
+            style="stroke: var(--generation)"
+            stroke-width="1.5"
+            points={sparkPoints(gnHistory, 300, 24)}
+          />
         </svg>
         {#if gn.avg30s != null}
           <div class="speed-expanded-meta">{$t("speed_avg30", { v: fmt(gn.avg30s) })}</div>
@@ -111,17 +157,9 @@
   {#if !pf.splitAvailable && (pf.available || gn.available)}
     <div class="note">{$t("speed_split_unavailable")}</div>
   {/if}
-</div>
+</Section>
 
 <style>
-  .section {
-    padding: 10px 12px 12px;
-    border-top: 1px solid rgba(255, 255, 255, .06);
-  }
-  :global(:root[data-theme="light"]) .section {
-    border-top-color: rgba(0, 0, 0, .06);
-  }
-
   .speed-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -133,7 +171,7 @@
   }
 
   .speed-card {
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     padding: 10px;
     border: 2px solid;
     position: relative;
@@ -143,27 +181,19 @@
   }
 
   .speed-card.prefill {
-    border-color: #FB923C;
-    background: rgba(251, 146, 60, .10);
-  }
-  :global(:root[data-theme="light"]) .speed-card.prefill {
-    border-color: #EA580C;
-    background: rgba(234, 88, 12, .06);
+    border-color: var(--prefill);
+    background: var(--prefill-bg);
   }
 
   .speed-card.generation {
-    border-color: #4ADE80;
-    background: rgba(74, 222, 128, .10);
-  }
-  :global(:root[data-theme="light"]) .speed-card.generation {
-    border-color: #16A34A;
-    background: rgba(22, 163, 74, .06);
+    border-color: var(--generation);
+    background: var(--generation-bg);
   }
 
   .speed-title {
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: .6px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
     margin-bottom: 6px;
     display: flex;
@@ -171,11 +201,12 @@
     justify-content: space-between;
   }
 
-  .speed-card.prefill .speed-title { color: #FDBA74; }
-  :global(:root[data-theme="light"]) .speed-card.prefill .speed-title { color: #C2410C; }
-
-  .speed-card.generation .speed-title { color: #86EFAC; }
-  :global(:root[data-theme="light"]) .speed-card.generation .speed-title { color: #15803D; }
+  .speed-card.prefill .speed-title {
+    color: var(--prefill-title);
+  }
+  .speed-card.generation .speed-title {
+    color: var(--generation-title);
+  }
 
   .live-dot {
     width: 6px;
@@ -183,12 +214,21 @@
     border-radius: 50%;
     animation: live 1.2s infinite ease-in-out;
   }
-  .speed-card.prefill .live-dot { background: #FB923C; }
-  .speed-card.generation .live-dot { background: #4ADE80; }
+  .speed-card.prefill .live-dot {
+    background: var(--prefill);
+  }
+  .speed-card.generation .live-dot {
+    background: var(--generation);
+  }
 
   @keyframes live {
-    0%, 100% { opacity: .3; }
-    50%      { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   .speed-value-row {
@@ -210,11 +250,8 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -1.8px;
     line-height: 1;
-    color: #F8FAFC;
+    color: var(--text-strong);
     white-space: nowrap;
-  }
-  :global(:root[data-theme="light"]) .speed-value {
-    color: #0F172A;
   }
   :global(.widget.expanded) .speed-value {
     font-size: 44px;
@@ -224,10 +261,7 @@
   /* No reading yet: keep the dash visible but clearly inactive, so "—" reads as
      "nothing to measure" rather than "broken / still loading". */
   .speed-value.na {
-    color: rgba(255, 255, 255, .25);
-  }
-  :global(:root[data-theme="light"]) .speed-value.na {
-    color: rgba(0, 0, 0, .22);
+    color: var(--text-ghost);
   }
 
   .speed-sub {
@@ -235,10 +269,7 @@
     line-height: 1.3;
     margin-top: 6px;
     font-style: italic;
-    color: rgba(255, 255, 255, .45);
-  }
-  :global(:root[data-theme="light"]) .speed-sub {
-    color: rgba(0, 0, 0, .5);
+    color: var(--text-faint);
   }
 
   .speed-unit {
@@ -250,19 +281,18 @@
     font-size: 15px;
   }
 
-  .speed-card.prefill .speed-unit { color: #FDBA74; }
-  :global(:root[data-theme="light"]) .speed-card.prefill .speed-unit { color: #F97316; }
-  .speed-card.generation .speed-unit { color: #86EFAC; }
-  :global(:root[data-theme="light"]) .speed-card.generation .speed-unit { color: #22C55E; }
+  .speed-card.prefill .speed-unit {
+    color: var(--prefill-unit);
+  }
+  .speed-card.generation .speed-unit {
+    color: var(--generation-unit);
+  }
 
   .speed-avg {
     font-size: 11px;
-    color: rgba(255, 255, 255, .45);
+    color: var(--text-faint);
     margin-top: 6px;
     font-variant-numeric: tabular-nums;
-  }
-  :global(:root[data-theme="light"]) .speed-avg {
-    color: rgba(0, 0, 0, .5);
   }
 
   .sparkline {
@@ -276,25 +306,19 @@
   .speed-expanded-meta {
     display: none;
     font-size: 12px;
-    color: rgba(255, 255, 255, .5);
+    color: var(--text-muted);
     margin-top: 4px;
     font-variant-numeric: tabular-nums;
   }
   :global(.widget.expanded) .speed-expanded-meta {
     display: block;
   }
-  :global(:root[data-theme="light"]) .speed-expanded-meta {
-    color: rgba(0, 0, 0, .55);
-  }
 
   .note {
     margin-top: 8px;
     font-size: 10px;
-    color: rgba(255, 255, 255, .45);
+    color: var(--text-faint);
     font-style: italic;
     text-align: center;
-  }
-  :global(:root[data-theme="light"]) .note {
-    color: rgba(0, 0, 0, .5);
   }
 </style>

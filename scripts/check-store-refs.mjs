@@ -38,7 +38,11 @@ function storeImports(script) {
   while ((m = re.exec(script))) {
     const spec = m[1];
     for (const raw of spec.split(",")) {
-      const name = raw.trim().split(/\s+as\s+/).pop().trim();
+      const name = raw
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        .trim();
       if (name) names.add(name);
     }
   }

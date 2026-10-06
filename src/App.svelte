@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import Header from "./components/Header.svelte";
   import ContextBar from "./components/ContextBar.svelte";
   import SpeedBlock from "./components/SpeedBlock.svelte";
@@ -7,8 +7,10 @@
   import MetricsBlock from "./components/MetricsBlock.svelte";
   import Footer from "./components/Footer.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
-  import { state, ui, settings, pushLog, initTauri, onTrayEvent } from "./store";
-  import { loadSettings, savePosition, saveSize } from "./tauriApi";
+  import { state, ui, settings, pushLog, initTauri, get } from "./store";
+  import { loadSettings, savePosition, saveSize, setOptions } from "./tauriApi";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { createWindowFitter } from "./lib/windowFit";
 
   let expanded = false;
   let showSettings = false;
@@ -16,78 +18,65 @@
   let geoTimer = null;
   let widgetEl = null;
 
+  const fitter = createWindowFitter(() => widgetEl);
+
+  // `default_compact` seeds the initial mode once the settings have loaded:
+  // compact means "not expanded". Applying it here (rather than at declaration)
+  // is what makes the setting actually work.
+  function seedExpanded() {
+    const s = get(settings);
+    if (!s) return;
+    expanded = !s.default_compact;
+    // The window was already fitted for the default (compact) layout, so
+    // re-measure for the seeded one.
+    fitter.reset();
+    tick().then(fitter.fit);
+  }
+
+  let unsubscribeState = null;
+  let unlistenMove = null;
+  let unlistenResize = null;
+
   onMount(async () => {
     await initTauri();
     await loadSettings();
+    seedExpanded();
     pushLog("app started");
-    fitWindowToContent();
+    fitter.fit();
+
+    // Refit whenever telemetry lands: the content height is not constant (the
+    // speed block grows the moment a reading arrives, diagnostics change
+    // length). `subscribe` fires immediately too, covering the first frame.
+    unsubscribeState = state.subscribe(() => fitter.schedule());
 
     // Persist window geometry (debounced) so position/size survive restarts.
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const win = getCurrentWindow();
-      win.onMoved(({ payload }) => {
+      unlistenMove = await win.onMoved(({ payload }) => {
         if (typeof payload?.x !== "number" || typeof payload?.y !== "number") return;
         scheduleGeoSave(() => savePosition(payload.x, payload.y));
       });
-      win.onResized(({ payload }) => {
+      unlistenResize = await win.onResized(({ payload }) => {
         const w = payload?.width ?? payload?.size?.width;
         const h = payload?.height ?? payload?.size?.height;
         if (typeof w !== "number" || typeof h !== "number") return;
         scheduleGeoSave(() => saveSize(w, h));
       });
     } catch (err) {
-      console.warn("geometry listeners failed:", err);
+      pushLog("geometry listeners failed: " + err);
     }
+  });
+
+  onDestroy(() => {
+    if (geoTimer) clearTimeout(geoTimer);
+    if (unsubscribeState) unsubscribeState();
+    if (unlistenMove) unlistenMove();
+    if (unlistenResize) unlistenResize();
   });
 
   function scheduleGeoSave(fn) {
     if (geoTimer) clearTimeout(geoTimer);
     geoTimer = setTimeout(fn, 400);
-  }
-
-  // Last content height actually applied to the window. Lets us skip redundant
-  // resizes AND leave a manual height resize alone until the content changes.
-  let lastFitHeight = 0;
-
-  // Fit the OS window to the widget's natural content height (keeps the
-  // current width so manual horizontal resizes are preserved). The widget is
-  // height:100% of the window WITH overflow:hidden, so its scrollHeight just
-  // echoes the window height — not the content height. Temporarily release the
-  // fixed height (-> auto) so the element grows to its natural size, measure,
-  // then restore BEFORE the async IPC so the flip stays inside one frame.
-  async function fitWindowToContent() {
-    if (!widgetEl) return;
-    try {
-      const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
-      await tick();
-      const win = getCurrentWindow();
-      const prevHeight = widgetEl.style.height;
-      widgetEl.style.height = "auto";
-      await tick();
-      const h = Math.round(widgetEl.scrollHeight);
-      widgetEl.style.height = prevHeight; // "" -> CSS height:100%
-      if (Math.abs(h - lastFitHeight) < 2) return; // content unchanged, nothing to do
-      lastFitHeight = h;
-      const scale = await win.scaleFactor();
-      const cur = await win.innerSize(); // physical pixels
-      const logicalWidth = cur.width / scale;
-      await win.setSize(new LogicalSize(logicalWidth, h));
-    } catch (err) {
-      console.warn("fit to content failed:", err);
-    }
-  }
-
-  // Debounced refit. The content height is NOT constant: in compact mode the
-  // speed block grows the moment telemetry arrives (the tok/s unit and the
-  // 30 s average appear, and a "split unavailable" note may too). Fitting only
-  // on mount/toggle would therefore leave the bottom clipped until the user
-  // toggles. Refit whenever the monitoring state updates; the guard inside
-  // fitWindowToContent() keeps this from thrashing the window.
-  let fitTimer = null;
-  function scheduleFit() {
-    if (fitTimer) clearTimeout(fitTimer);
-    fitTimer = setTimeout(fitWindowToContent, 150);
   }
 
   // Explicitly re-fit when the user toggles compact <-> expanded. Driving this
@@ -96,12 +85,8 @@
   async function toggleExpanded() {
     expanded = !expanded;
     await tick();
-    fitWindowToContent();
+    fitter.fit();
   }
-
-  // Refit on every telemetry update (subscribe fires immediately too, so this
-  // also covers the initial fit).
-  onMount(() => state.subscribe(() => scheduleFit()));
 
   $: if ($ui) {
     applyOptions($ui);
@@ -109,41 +94,25 @@
 
   $: if ($ui && $ui.theme) {
     document.documentElement.setAttribute("data-theme", $ui.theme);
+    // Section paddings and the number of visible rows change with the theme's
+    // font metrics, so the height has to be re-measured.
+    fitter.schedule();
   }
 
-  async function applyOptions(u) {
-    const { setOptions } = await import("./tauriApi");
-    await setOptions({
-      always_on_top: u.alwaysOnTop,
-      theme: u.theme,
-      compact: u.compact,
-      opacity: u.opacity,
-    });
+  // Only the two options the window itself owns. `compact` is local state and
+  // `opacity` is applied as CSS below — sending them to the backend used to be
+  // a silent no-op (they were logged and dropped).
+  function applyOptions(u) {
+    setOptions({ always_on_top: u.alwaysOnTop, theme: u.theme });
   }
 
   async function hideToTray() {
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().hide();
     } catch (err) {
-      console.warn("hide failed:", err);
+      pushLog("hide failed: " + err);
     }
   }
-
-  async function restoreWindow() {
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const win = getCurrentWindow();
-      await win.show();
-      await win.unminimize();
-      await win.setFocus();
-    } catch (err) {
-      console.warn("restore failed:", err);
-    }
-  }
-
-  onTrayEvent("show", restoreWindow);
-  onTrayEvent("hide", hideToTray);
 </script>
 
 <svelte:window
@@ -152,13 +121,8 @@
   }}
 />
 
-<div class="widget" class:expanded style="opacity: {$ui && $ui.opacity}"
-     bind:this={widgetEl}>
-  <Header
-    {expanded}
-    onToggleExpanded={toggleExpanded}
-    onHideToTray={hideToTray}
-  />
+<div class="widget" class:expanded style="opacity: {$ui.opacity}" bind:this={widgetEl}>
+  <Header {expanded} onToggleExpanded={toggleExpanded} onHideToTray={hideToTray} />
 
   <div class="body">
     <ContextBar {expanded} />
@@ -169,7 +133,6 @@
 
   <Footer
     {expanded}
-    diagnostics={$state.diagnostics}
     onToggleSettings={() => {
       showLogsTab = false;
       showSettings = !showSettings;
@@ -183,38 +146,25 @@
 </div>
 
 {#if showSettings}
-  <SettingsPanel
-    onClose={() => (showSettings = false)}
-    showLogsInitially={showLogsTab}
-  />
+  <SettingsPanel onClose={() => (showSettings = false)} showLogsInitially={showLogsTab} />
 {/if}
 
 <style>
   .widget {
     width: 100%;
     height: 100%;
-    background: rgba(32, 32, 32, .85);
+    background: var(--surface);
     backdrop-filter: blur(40px) saturate(160%);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, .08);
-    box-shadow:
-      0 12px 40px rgba(0, 0, 0, .45),
-      0 2px 8px rgba(0, 0, 0, .3),
-      inset 0 1px 0 rgba(255, 255, 255, .05);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--shadow-widget);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: background .25s, border-color .25s;
+    transition:
+      background 0.25s,
+      border-color 0.25s;
     user-select: none;
-  }
-
-  :global(:root[data-theme="light"]) .widget {
-    background: rgba(243, 243, 243, .92);
-    border-color: rgba(0, 0, 0, .06);
-    box-shadow:
-      0 12px 40px rgba(0, 0, 0, .15),
-      0 2px 8px rgba(0, 0, 0, .08),
-      inset 0 1px 0 rgba(255, 255, 255, .6);
   }
 
   .body {

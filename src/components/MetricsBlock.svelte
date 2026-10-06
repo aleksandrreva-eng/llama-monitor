@@ -1,11 +1,11 @@
 <script>
   import { state } from "../store";
   import { t, formatInt } from "../i18n";
+  import Section from "./Section.svelte";
 
   export let expanded = false;
 
-  $: s = $state;
-  $: metrics = s.otherMetrics || [];
+  $: metrics = $state.otherMetrics || [];
 
   function fmt(v) {
     if (v == null || Number.isNaN(v)) return "—";
@@ -19,8 +19,7 @@
 </script>
 
 {#if expanded}
-  <div class="section">
-    <div class="section-title">{$t("metrics_title")}</div>
+  <Section title={$t("metrics_title")}>
     {#if hasMetrics}
       <div class="metrics-grid">
         {#each metrics as m (m.name)}
@@ -33,30 +32,10 @@
     {:else}
       <div class="metric-empty">{$t("metrics_empty")}</div>
     {/if}
-  </div>
+  </Section>
 {/if}
 
 <style>
-  .section {
-    padding: 10px 12px 12px;
-    border-top: 1px solid rgba(255, 255, 255, .06);
-  }
-  :global(:root[data-theme="light"]) .section {
-    border-top-color: rgba(0, 0, 0, .06);
-  }
-
-  .section-title {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .6px;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, .5);
-    margin-bottom: 8px;
-  }
-  :global(:root[data-theme="light"]) .section-title {
-    color: rgba(0, 0, 0, .45);
-  }
-
   .metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -70,31 +49,24 @@
     font-size: 12px;
     line-height: 1.7;
   }
+
   .metric-name {
-    font-family: "Cascadia Code", Consolas, monospace;
-    color: rgba(255, 255, 255, .55);
+    font-family: var(--font-mono);
+    color: var(--text-label);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  :global(:root[data-theme="light"]) .metric-name {
-    color: rgba(0, 0, 0, .5);
-  }
+
   .metric-value {
     font-family: var(--font);
     font-variant-numeric: tabular-nums;
-    color: #fff;
-  }
-  :global(:root[data-theme="light"]) .metric-value {
-    color: #1a1a1a;
+    color: var(--text-strong);
   }
 
   .metric-empty {
     font-size: 12px;
-    color: rgba(255, 255, 255, .4);
+    color: var(--text-path);
     line-height: 1.7;
-  }
-  :global(:root[data-theme="light"]) .metric-empty {
-    color: rgba(0, 0, 0, .45);
   }
 </style>

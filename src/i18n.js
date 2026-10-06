@@ -9,10 +9,14 @@ export const SUPPORTED_LOCALES = ["ru", "en"];
 // for existing users; the Settings panel lets the user switch to English.
 export const locale = writable("ru");
 
-// Translation tables. Key sets are identical across locales. The Russian table
-// MUST stay byte-for-byte equal to the original hardcoded strings so existing
-// users see no regression. `t()` falls back to Russian, then to the raw key, if
-// a key is missing in the active locale.
+// Translation tables. Key sets are identical across locales (guarded by
+// `scripts/check-i18n.mjs`, which runs as part of `npm run build`). `t()` falls
+// back to Russian, then to the raw key, if a key is missing in the active
+// locale.
+//
+// `diag_*` keys are resolved by `diagText()` in `src/lib/diagnostics.js` from
+// the `{ code }` the Rust side sends — the backend never ships prose, so the
+// diagnostics block is localized like everything else.
 export const dictionaries = {
   ru: {
     // --- SpeedBlock ---
@@ -32,6 +36,7 @@ export const dictionaries = {
     ctx_used: "Потрачено",
     ctx_remaining: "Осталось",
     ctx_tip: "Всего: {total} · Потрачено: {used} · Осталось: {remaining} · Заполнено: {pct}%",
+    ctx_tip_unknown: "Всего: {total} · потрачено неизвестно",
 
     // --- MetricsBlock ---
     metrics_title: "Метрики /metrics",
@@ -43,10 +48,23 @@ export const dictionaries = {
     time_min_ago: "{min} мин назад",
     time_long_ago: "давно",
     updated: "Обновлено {t}",
-    diag_source: "Источник: /metrics + /props · Ошибок: 0",
+    diag_none: "Диагностика: замечаний нет",
     btn_settings: "Настройки",
     btn_logs: "Логи",
     btn_minimize: "Свернуть",
+
+    // --- Diagnostics (keys are `diag_<code>` from the Rust DiagCode enum) ---
+    diag_context_unknown: "Использование контекста неизвестно",
+    diag_prefill_unavailable: "Скорость prefill недоступна",
+    diag_generation_unavailable: "Скорость генерации недоступна",
+    diag_model_unknown: "Модель не определена",
+    diag_split_unavailable: "Сервер не разделяет prefill и generation",
+    diag_stale: "Данные устарели",
+    diag_server_idle: "Сервер простаивает — активной генерации нет",
+    diag_metrics_disabled: "Сервер запущен без --metrics",
+    diag_vllm_metrics_missing: "vLLM не публикует метрики vllm:",
+    diag_ollama_no_models: "Ollama не сообщает о запущенной модели",
+    diag_poll_failed: "Опрос не удался",
 
     // --- Header ---
     theme_light: "Тема: светлая",
@@ -89,13 +107,17 @@ export const dictionaries = {
     lbl_type: "Тип",
     opt_local: "llama.cpp (локальный/удалённый)",
     lbl_url: "URL",
-    hint_url: "Без суффикса /v1: нативные эндпоинты (для llama.cpp — корень; для Ollama — /api) и OpenAI-совместимый /v1 выводятся автоматически.",
+    hint_url:
+      "Без суффикса /v1: нативные эндпоинты (для llama.cpp — корень; для Ollama — /api) и OpenAI-совместимый /v1 выводятся автоматически.",
     lbl_api_key: "API-ключ (опционально)",
     ph_optional: "(необязательно)",
     hint_api_key: "Не попадает в логи. Пустое поле — ключ удаляется.",
     sec_polling: "Опрос и подключение",
     lbl_poll_interval: "Интервал опроса, мс",
     lbl_timeout: "Таймаут запроса, мс",
+    lbl_smoothing: "Окно усреднения, с",
+    lbl_warn_threshold: "Порог предупреждения, %",
+    lbl_critical_threshold: "Порог критичности, %",
     lbl_theme: "Тема",
     opt_auto: "Авто",
     opt_light: "Светлая",
@@ -142,6 +164,7 @@ export const dictionaries = {
     ctx_used: "Used",
     ctx_remaining: "Remaining",
     ctx_tip: "Total: {total} · Used: {used} · Remaining: {remaining} · Filled: {pct}%",
+    ctx_tip_unknown: "Total: {total} · used unknown",
 
     // --- MetricsBlock ---
     metrics_title: "/metrics",
@@ -153,10 +176,23 @@ export const dictionaries = {
     time_min_ago: "{min}m ago",
     time_long_ago: "long ago",
     updated: "Updated {t}",
-    diag_source: "Source: /metrics + /props · Errors: 0",
+    diag_none: "Diagnostics: no issues",
     btn_settings: "Settings",
     btn_logs: "Logs",
     btn_minimize: "Minimize",
+
+    // --- Diagnostics (keys are `diag_<code>` from the Rust DiagCode enum) ---
+    diag_context_unknown: "Context usage unknown",
+    diag_prefill_unavailable: "Prefill speed unavailable",
+    diag_generation_unavailable: "Generation speed unavailable",
+    diag_model_unknown: "Model not detected",
+    diag_split_unavailable: "Server does not split prefill and generation",
+    diag_stale: "Data is out of date",
+    diag_server_idle: "Server idle — no active generation",
+    diag_metrics_disabled: "Server started without --metrics",
+    diag_vllm_metrics_missing: "vLLM publishes no vllm: metrics",
+    diag_ollama_no_models: "Ollama reports no running model",
+    diag_poll_failed: "Poll failed",
 
     // --- Header ---
     theme_light: "Theme: light",
@@ -199,13 +235,17 @@ export const dictionaries = {
     lbl_type: "Type",
     opt_local: "llama.cpp (local/remote)",
     lbl_url: "URL",
-    hint_url: "No /v1 suffix: native endpoints (llama.cpp root; Ollama /api) and the OpenAI-compatible /v1 are detected automatically.",
+    hint_url:
+      "No /v1 suffix: native endpoints (llama.cpp root; Ollama /api) and the OpenAI-compatible /v1 are detected automatically.",
     lbl_api_key: "API key (optional)",
     ph_optional: "(optional)",
     hint_api_key: "Not written to logs. Empty field removes the key.",
     sec_polling: "Polling & connection",
     lbl_poll_interval: "Poll interval, ms",
     lbl_timeout: "Request timeout, ms",
+    lbl_smoothing: "Smoothing window, s",
+    lbl_warn_threshold: "Warning threshold, %",
+    lbl_critical_threshold: "Critical threshold, %",
     lbl_theme: "Theme",
     opt_auto: "Auto",
     opt_light: "Light",
@@ -248,7 +288,9 @@ function resolve(key) {
 export const t = derived(locale, () => (key, vars) => {
   let s = resolve(key);
   if (vars && typeof s === "string") {
-    s = s.replace(/\{(\w+)\}/g, (_, name) => (vars[name] != null ? String(vars[name]) : `{${name}}`));
+    s = s.replace(/\{(\w+)\}/g, (_, name) =>
+      vars[name] != null ? String(vars[name]) : `{${name}}`,
+    );
   }
   return s;
 });

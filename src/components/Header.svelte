@@ -1,5 +1,5 @@
 <script>
-  import { state, ui, settings } from "../store";
+  import { state, ui, settings, pushLog } from "../store";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { saveSettings } from "../tauriApi";
   import { t } from "../i18n";
@@ -16,7 +16,7 @@
     if (!st || !st.servers || !st.servers.length) return null;
     const id = st.active_server_id || st.servers[0].id;
     const p = st.servers.find((x) => x.id === id);
-    return p ? (p.label || p.url) : null;
+    return p ? p.label || p.url : null;
   })();
   $: label = s?.serverLabel || activeLabel || "llama.cpp";
 
@@ -51,7 +51,7 @@
     try {
       await getCurrentWindow().close();
     } catch (err) {
-      console.warn("close failed:", err);
+      pushLog("close failed: " + err);
     }
   }
 
@@ -62,7 +62,7 @@
     try {
       await getCurrentWindow().startDragging();
     } catch (err) {
-      console.warn("drag failed:", err);
+      pushLog("drag failed: " + err);
     }
   }
 
@@ -77,8 +77,13 @@
   $: pinned = $ui?.alwaysOnTop;
 </script>
 
-<div class="header" role="button" aria-label="drag area"
-     on:pointerdown={onDragStart} on:pointerup={onDragEnd}>
+<div
+  class="header"
+  role="button"
+  aria-label="drag area"
+  on:pointerdown={onDragStart}
+  on:pointerup={onDragEnd}
+>
   <div class="status-dot {statusClass}"></div>
   <div class="header-label">{label}</div>
 
@@ -88,9 +93,19 @@
 
     <div class="header-divider"></div>
 
-    <button class="icon-btn" class:pinned title={$t("title_always_on_top")} on:click={toggleAlwaysOnTop}>📌</button>
+    <button
+      class="icon-btn"
+      class:pinned
+      title={$t("title_always_on_top")}
+      on:click={toggleAlwaysOnTop}>📌</button
+    >
     <button class="icon-btn" title={$t("title_to_tray")} on:click={onHideToTray}>─</button>
-    <button class="icon-btn" title={$t("title_close")} aria-label={$t("title_close")} on:click={closeWindow}>✕</button>
+    <button
+      class="icon-btn"
+      title={$t("title_close")}
+      aria-label={$t("title_close")}
+      on:click={closeWindow}>✕</button
+    >
   </div>
 </div>
 
@@ -103,60 +118,61 @@
     gap: 6px;
     cursor: grab;
   }
-  .header:active { cursor: grabbing; }
+  .header:active {
+    cursor: grabbing;
+  }
 
+  /* The dot's `color` is the single source of its colour: the background uses
+     it directly and the pulsing ring derives from it via `currentColor`. That
+     replaced five near-identical @keyframes blocks whose rgba() rings had to be
+     kept in sync with the hex backgrounds by hand. */
   .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
-    box-shadow: 0 0 0 0 rgba(22, 163, 74, .5);
+    background: currentColor;
     animation: pulse 2s infinite;
   }
-  .status-dot.connected { background: #16A34A; box-shadow: 0 0 0 0 rgba(22, 163, 74, .5); }
-  .status-dot.connecting { background: #9d5bd0; box-shadow: 0 0 0 0 rgba(157, 91, 208, .5); animation: pulse-purple 2s infinite; }
-  .status-dot.disconnected { background: #d13438; box-shadow: 0 0 0 0 rgba(209, 52, 56, .5); animation: pulse-red 2s infinite; }
-  .status-dot.error { background: #d13438; box-shadow: 0 0 0 0 rgba(209, 52, 56, .5); animation: pulse-red 2s infinite; }
-  .status-dot.stale { background: #8d5b00; box-shadow: 0 0 0 0 rgba(141, 91, 0, .5); animation: pulse-amber 2s infinite; }
-  .status-dot.unavailable { background: #a1a1a1; box-shadow: 0 0 0 0 rgba(161, 161, 161, .5); animation: pulse-gray 2s infinite; }
+  .status-dot.connected {
+    color: var(--status-connected);
+  }
+  .status-dot.connecting {
+    color: var(--status-connecting);
+  }
+  .status-dot.disconnected {
+    color: var(--status-disconnected);
+  }
+  .status-dot.error {
+    color: var(--status-error);
+  }
+  .status-dot.stale {
+    color: var(--status-stale);
+  }
+  .status-dot.unavailable {
+    color: var(--status-unavailable);
+  }
 
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, .4); }
-    70%  { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
-  }
-  @keyframes pulse-purple {
-    0%   { box-shadow: 0 0 0 0 rgba(157, 91, 208, .4); }
-    70%  { box-shadow: 0 0 0 6px rgba(157, 91, 208, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(157, 91, 208, 0); }
-  }
-  @keyframes pulse-red {
-    0%   { box-shadow: 0 0 0 0 rgba(209, 52, 56, .4); }
-    70%  { box-shadow: 0 0 0 6px rgba(209, 52, 56, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(209, 52, 56, 0); }
-  }
-  @keyframes pulse-amber {
-    0%   { box-shadow: 0 0 0 0 rgba(141, 91, 0, .4); }
-    70%  { box-shadow: 0 0 0 6px rgba(141, 91, 0, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(141, 91, 0, 0); }
-  }
-  @keyframes pulse-gray {
-    0%   { box-shadow: 0 0 0 0 rgba(161, 161, 161, .4); }
-    70%  { box-shadow: 0 0 0 6px rgba(161, 161, 161, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(161, 161, 161, 0); }
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 40%, transparent);
+    }
+    70% {
+      box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 0%, transparent);
+    }
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent);
+    }
   }
 
   .header-label {
     font-size: 12px;
-    color: rgba(255, 255, 255, .85);
+    color: var(--text-header);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
     min-width: 0;
-  }
-  :global(:root[data-theme="light"]) .header-label {
-    color: rgba(0, 0, 0, .75);
   }
 
   .header-actions {
@@ -172,29 +188,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: transparent;
     border: none;
     cursor: pointer;
-    color: rgba(255, 255, 255, .7);
+    color: var(--text-icon);
     font-size: 12px;
     padding: 0;
-    transition: background .15s, color .15s;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
-  .icon-btn:hover { background: rgba(255, 255, 255, .1); color: #fff; }
-  .icon-btn:active { background: rgba(255, 255, 255, .16); }
-  .icon-btn.pinned { background: rgba(0, 120, 212, .25); color: #4FC3F7; }
-
-  :global(:root[data-theme="light"]) .icon-btn {
-    color: rgba(0, 0, 0, .55);
+  .icon-btn:hover {
+    background: var(--inset);
+    color: var(--text-icon-hover);
   }
-  :global(:root[data-theme="light"]) .icon-btn:hover {
-    background: rgba(0, 0, 0, .08);
-    color: #000;
+  .icon-btn:active {
+    background: var(--inset-strong);
   }
-  :global(:root[data-theme="light"]) .icon-btn.pinned {
-    background: rgba(0, 120, 212, .15);
-    color: #0078d4;
+  .icon-btn.pinned {
+    background: var(--pin-bg);
+    color: var(--pin-fg);
   }
 
   .icon-btn.mode {
@@ -202,24 +216,13 @@
     height: 24px;
     border-radius: 5px;
     font-size: 12px;
-    color: rgba(255, 255, 255, .6);
-  }
-  .icon-btn.mode:hover { color: #fff; }
-  :global(:root[data-theme="light"]) .icon-btn.mode {
-    color: rgba(0, 0, 0, .5);
-  }
-  :global(:root[data-theme="light"]) .icon-btn.mode:hover {
-    color: #000;
   }
 
   .header-divider {
     width: 1px;
     height: 16px;
-    background: rgba(255, 255, 255, .12);
+    background: var(--control-border);
     margin: 0 4px;
     flex-shrink: 0;
-  }
-  :global(:root[data-theme="light"]) .header-divider {
-    background: rgba(0, 0, 0, .12);
   }
 </style>

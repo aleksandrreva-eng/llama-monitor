@@ -16,8 +16,16 @@ const EMPTY_STATE = {
   context: { total: null, used: null, remaining: null, percent: null, available: false },
   prefillSpeed: { current: null, avg30s: null, available: false, splitAvailable: false },
   generationSpeed: { current: null, avg30s: null, available: false, splitAvailable: false },
-  model: { name: null, contextSize: null, loaded: false, quantization: null, path: null, version: null },
+  model: {
+    name: null,
+    contextSize: null,
+    loaded: false,
+    quantization: null,
+    path: null,
+    version: null,
+  },
   otherMetrics: [],
+  // Each entry is `{ code, detail? }` — a translatable code, not prose.
   diagnostics: [],
 };
 
@@ -41,7 +49,10 @@ export function mergeState(payload) {
 }
 
 export const settings = writable(null);
-export const ui = writable({ compact: true, alwaysOnTop: false, theme: "auto", opacity: 1.0 });
+// Live window options. `compact` is deliberately absent: the expanded/compact
+// toggle is component state seeded from `Settings.default_compact`, and a
+// `ui.compact` field nothing read only made that setting look wired up.
+export const ui = writable({ alwaysOnTop: false, theme: "auto", opacity: 1.0 });
 
 let logs = [];
 export const logStore = writable([]);
@@ -52,33 +63,15 @@ export function pushLog(msg) {
   logStore.set(logs);
 }
 
-let trayHandlers = new Map();
-
-export function onTrayEvent(id, handler) {
-  trayHandlers.set(id, handler);
-}
-
+/// Subscribe to the backend's state stream.
+///
+/// The tray has no event channel: show/hide is handled entirely in Rust
+/// (`main.rs`), which is what made the previous `listen("tray:event")` handler
+/// dead code — the event was never emitted, so nothing it did could ever run.
 export async function initTauri() {
   try {
     await listen("monitoring:update", (e) => {
       state.set(mergeState(e.payload));
-    });
-    await listen("tray:event", (e) => {
-      const payload = String(e.payload);
-      pushLog(`Tray event: ${payload}`);
-      
-      if (payload.includes("show")) {
-        const handler = trayHandlers.get("show");
-        if (handler) handler("show");
-      } else if (payload.includes("hide")) {
-        const handler = trayHandlers.get("hide");
-        if (handler) handler("hide");
-      } else {
-        const handler = trayHandlers.get(payload);
-        if (handler) {
-          handler(payload);
-        }
-      }
     });
   } catch (err) {
     pushLog("listen error: " + err);

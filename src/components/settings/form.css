@@ -1,0 +1,79 @@
+/* Shared form styling for the settings panel.
+ *
+ * The panel is split across several files so that no single one is unreadable;
+ * duplicating sixty lines of control styling into each of them would undo that.
+ * Imported once by `SettingsPanel.svelte`.
+ *
+ * These selectors are global (not Svelte-scoped) on purpose, so they can be
+ * shared. A component that needs to override one still wins: its scoped
+ * `.field.svelte-xxxx` selector has higher specificity than `.field`.
+ */
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+.field.switch {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.field input,
+.field select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.field input[type="range"] {
+  width: 100%;
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--text-hint);
+}
+
+.btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-size: 12px;
+}
+
+.btn.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.btn.block {
+  width: 100%;
+}
+
+.btn.dashed {
+  border-style: dashed;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

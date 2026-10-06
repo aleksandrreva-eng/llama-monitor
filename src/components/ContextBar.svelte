@@ -1,76 +1,101 @@
 <script>
-  import { state } from "../store";
+  import { state, settings } from "../store";
   import { t, formatInt } from "../i18n";
+  import Section from "./Section.svelte";
 
   export let expanded = false;
 
-  $: s = $state;
-  $: ctx = s.context;
+  $: ctx = $state.context;
 
   let showTip = false;
 
-  function fmt(n) {
-    return formatInt(n);
-  }
+  const fmt = (n) => formatInt(n);
 
-  $: pct = ctx.available && ctx.percent != null ? Math.round(ctx.percent * 100) : 0;
+  // Fill ratios come from Settings (0..1). The fallbacks match
+  // `Settings::default()` so the bar behaves sensibly before the settings load.
+  $: warnAt = $settings?.warning_threshold ?? 0.75;
+  $: criticalAt = $settings?.critical_threshold ?? 0.9;
+
+  // `percent` is `null` when the total is known but the used amount is not.
+  // Multiplying null by 100 yields 0 — which would claim "filled: 0.0%" for a
+  // server whose usage is simply unknown. So the ratio is only defined when
+  // `percent` is actually present.
+  $: hasPercent = ctx.available && ctx.percent != null;
+  $: ratio = hasPercent ? ctx.percent : 0;
+  $: pct = hasPercent ? Math.round(ratio * 100) : 0;
+  $: warn = hasPercent && ratio >= warnAt;
+  $: critical = hasPercent && ratio >= criticalAt;
+
   $: label = ctx.available
     ? ctx.used != null
-      ? $t("ctx_summary", { total: fmt(ctx.total), used: fmt(ctx.used), remaining: fmt(ctx.remaining) })
+      ? $t("ctx_summary", {
+          total: fmt(ctx.total),
+          used: fmt(ctx.used),
+          remaining: fmt(ctx.remaining),
+        })
       : $t("ctx_unknown_used", { total: fmt(ctx.total) })
     : $t("no_data");
 </script>
 
-  <div class="section" class:warn={ctx.available && ctx.percent >= 0.75}
-     on:mouseenter={() => (showTip = true)} on:mouseleave={() => (showTip = false)}>
-  <div class="section-title">{$t("ctx_title")}</div>
-  <div class="progress-row">
-    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-         aria-valuetext={ctx.available ? `${pct}%` : $t("no_data")}>
-      <div class="progress-fill" style="width: {pct}%"></div>
+<Section title={$t("ctx_title")}>
+  <!-- The warn/critical classes live on a wrapper inside this component so the
+       scoped styles below can reach the elements they colour. -->
+  <div
+    class="ctx-body"
+    class:warn
+    class:critical
+    role="group"
+    aria-label={$t("ctx_title")}
+    on:mouseenter={() => (showTip = true)}
+    on:mouseleave={() => (showTip = false)}
+  >
+    <div class="progress-row">
+      <div
+        class="progress"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuetext={hasPercent ? `${pct}%` : $t("no_data")}
+      >
+        <div class="progress-fill" style="width: {pct}%"></div>
+      </div>
+      <div class="progress-pct">{hasPercent ? pct + "%" : "—"}</div>
     </div>
-    <div class="progress-pct">{ctx.available ? pct + "%" : "—"}</div>
+
+    <div class="context-text compact-line">{label}</div>
+
+    {#if expanded && ctx.available}
+      <div class="expanded-rows">
+        <div class="ctx-row">
+          <span class="label">{$t("ctx_total")}</span><span class="value">{fmt(ctx.total)}</span>
+        </div>
+        <div class="ctx-row">
+          <span class="label">{$t("ctx_used")}</span><span class="value">{fmt(ctx.used)}</span>
+        </div>
+        <div class="ctx-row">
+          <span class="label">{$t("ctx_remaining")}</span><span class="value"
+            >{fmt(ctx.remaining)}</span
+          >
+        </div>
+      </div>
+    {/if}
+
+    {#if showTip && ctx.available}
+      <div class="tip">
+        {hasPercent
+          ? $t("ctx_tip", {
+              total: fmt(ctx.total),
+              used: fmt(ctx.used),
+              remaining: fmt(ctx.remaining),
+              pct: (ratio * 100).toFixed(1),
+            })
+          : $t("ctx_tip_unknown", { total: fmt(ctx.total) })}
+      </div>
+    {/if}
   </div>
-
-  <div class="context-text compact-line">{label}</div>
-
-  {#if expanded && ctx.available}
-    <div class="expanded-rows">
-      <div class="ctx-row"><span class="label">{$t("ctx_total")}</span><span class="value">{fmt(ctx.total)}</span></div>
-      <div class="ctx-row"><span class="label">{$t("ctx_used")}</span><span class="value">{fmt(ctx.used)}</span></div>
-      <div class="ctx-row"><span class="label">{$t("ctx_remaining")}</span><span class="value">{fmt(ctx.remaining)}</span></div>
-    </div>
-  {/if}
-
-  {#if showTip && ctx.available}
-    <div class="tip">
-      {$t("ctx_tip", { total: fmt(ctx.total), used: fmt(ctx.used), remaining: fmt(ctx.remaining), pct: (ctx.percent * 100).toFixed(1) })}
-    </div>
-  {/if}
-</div>
+</Section>
 
 <style>
-  .section {
-    padding: 10px 12px 12px;
-    border-top: 1px solid rgba(255, 255, 255, .06);
-    position: relative;
-  }
-  :global(:root[data-theme="light"]) .section {
-    border-top-color: rgba(0, 0, 0, .06);
-  }
-
-  .section-title {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .6px;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, .5);
-    margin-bottom: 8px;
-  }
-  :global(:root[data-theme="light"]) .section-title {
-    color: rgba(0, 0, 0, .45);
-  }
-
   .progress-row {
     display: flex;
     align-items: center;
@@ -82,19 +107,16 @@
     flex: 1;
     height: 8px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, .08);
+    background: var(--inset);
     overflow: hidden;
-  }
-  :global(:root[data-theme="light"]) .progress {
-    background: rgba(0, 0, 0, .08);
   }
 
   .progress-fill {
     height: 100%;
     border-radius: 4px;
-    background: linear-gradient(90deg, #22C55E 0%, #EAB308 55%, #F97316 80%, #DC2626 100%);
+    background: linear-gradient(90deg, #22c55e 0%, #eab308 55%, #f97316 80%, #dc2626 100%);
     background-size: 420px 100%;
-    transition: width .4s ease;
+    transition: width 0.4s ease;
   }
 
   .progress-pct {
@@ -104,20 +126,14 @@
     font-variant-numeric: tabular-nums;
     min-width: 38px;
     text-align: right;
-    color: #fff;
-  }
-  :global(:root[data-theme="light"]) .progress-pct {
-    color: #1a1a1a;
+    color: var(--text-strong);
   }
 
   .context-text {
     font-size: 12px;
-    color: rgba(255, 255, 255, .65);
+    color: var(--text-body);
     font-variant-numeric: tabular-nums;
     line-height: 1.5;
-  }
-  :global(:root[data-theme="light"]) .context-text {
-    color: rgba(0, 0, 0, .6);
   }
 
   .expanded-rows {
@@ -137,38 +153,29 @@
     line-height: 1.7;
   }
   .ctx-row .label {
-    color: rgba(255, 255, 255, .55);
-  }
-  :global(:root[data-theme="light"]) .ctx-row .label {
-    color: rgba(0, 0, 0, .5);
+    color: var(--text-label);
   }
   .ctx-row .value {
     font-variant-numeric: tabular-nums;
-    color: #fff;
-  }
-  :global(:root[data-theme="light"]) .ctx-row .value {
-    color: #1a1a1a;
+    color: var(--text-strong);
   }
 
   .warn .progress-pct,
   .warn .context-text {
-    color: #F87171;
+    color: var(--warn-text);
   }
-  :global(:root[data-theme="light"]) .warn .progress-pct,
-  :global(:root[data-theme="light"]) .warn .context-text {
-    color: #DC2626;
+
+  .critical .progress-pct,
+  .critical .context-text {
+    color: var(--bad);
   }
 
   .tip {
     margin-top: 6px;
     font-size: 11px;
-    color: rgba(255, 255, 255, .65);
-    background: rgba(255, 255, 255, .08);
-    border-radius: 6px;
+    color: var(--text-body);
+    background: var(--inset);
+    border-radius: var(--radius-sm);
     padding: 6px 8px;
-  }
-  :global(:root[data-theme="light"]) .tip {
-    color: rgba(0, 0, 0, .6);
-    background: rgba(0, 0, 0, .06);
   }
 </style>

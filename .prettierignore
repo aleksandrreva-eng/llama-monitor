@@ -1,0 +1,13 @@
+# Build output and dependencies
+dist/
+node_modules/
+preview/
+
+# Rust side is formatted by rustfmt (see src-tauri/rustfmt.toml)
+src-tauri/
+
+# Manual verification scaffolding (machine-specific, not part of the product)
+dev/
+
+# Generated lockfile
+package-lock.json
