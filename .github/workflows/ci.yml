@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # Windows is the only supported target, and the only runner where the Tauri
+    # crate's platform dependencies are available without extra system packages.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Frontend formatting
+        run: npm run format:check
+
+      # `npm run build` runs the two static frontend checks (store references,
+      # i18n parity) and then Vite. Verified: `cargo test` does NOT need the
+      # output — `tauri-codegen` only embeds `frontendDist` when `devUrl` is
+      # unset, and `tauri.conf.json` sets it, so the dev-profile test build
+      # skips asset embedding entirely.
+      - name: Frontend checks and build
+        run: npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Backend formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Backend tests
+        working-directory: src-tauri
+        run: cargo test --bin llama-monitor

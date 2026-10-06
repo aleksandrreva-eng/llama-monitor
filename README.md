@@ -1,5 +1,6 @@
 # llama.cpp Monitor
 
+[![CI](https://github.com/aleksandrreva-eng/llama-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/aleksandrreva-eng/llama-monitor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/aleksandrreva-eng/llama-monitor?label=release)](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aleksandrreva-eng/llama-monitor/total)](https://github.com/aleksandrreva-eng/llama-monitor/releases)
@@ -109,8 +110,19 @@ export PATH="$HOME/.cargo/bin:$PATH"
 cargo test
 ```
 
-Covers adapter parsing (Prometheus/JSON, context, speeds, model) and the
-calculator logic (statuses, smoothing, staleness detection) — 63 tests.
+Covers adapter parsing (Prometheus/JSON, context, speeds, model), the
+calculator logic (statuses, smoothing, staleness detection), settings
+migration and the wire format shared with the frontend — 103 tests.
+
+Static checks for the frontend (store-reference misuse, i18n key parity) run
+separately:
+
+```bash
+npm run check      # check:stores + check:i18n
+```
+
+Both of them also run inside `npm run build`, and everything above runs on
+every push in CI (`.github/workflows/ci.yml`).
 
 ---
 
@@ -129,9 +141,13 @@ Open the settings panel (the ⚙️ icon in expanded mode):
 - **Theme, opacity, mode (compact/expanded), autorun, always-on-top, tray, logging.**
 - **API key** — optional, stored in settings and **never written to the logs**.
 
-Settings are saved to `llama-monitor-settings.json` next to the executable.
-Legacy config files are picked up automatically: missing fields get default
-values, and a legacy `base_path: "/v1"` is migrated to an empty root.
+Settings are saved to `%LOCALAPPDATA%\llama-monitor\llama-monitor-settings.json`
+(the same folder as the log). A portable copy falls back to the file next to the
+`.exe` if the data folder is unavailable. Writes are atomic (temp file + rename),
+so a crash mid-save cannot truncate the file. Legacy config files are picked up
+automatically: missing fields get default values, a legacy `base_path: "/v1"` is
+migrated to an empty root, and the old single-server fields become the first
+entry in the `servers` list.
 
 ---
 

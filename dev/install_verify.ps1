@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $msi = "F:\AI\Monitor_Ornith\llama-monitor\src-tauri\target\release\bundle\msi\llama-monitor_0.1.0_x64_en-US.msi"
 $inst = "C:\Program Files\llama-monitor\llama-monitor.exe"
-$report = "F:\AI\Monitor_Ornith\llama-monitor\scripts\_install_report.txt"
+$report = "F:\AI\Monitor_Ornith\llama-monitor\dev\_install_report.txt"
 $out = New-Object System.Collections.Generic.List[string]
 function Say([string]$l) { $out.Add($l); Write-Host $l }
 trap {

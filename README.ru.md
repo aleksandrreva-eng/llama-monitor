@@ -1,5 +1,6 @@
 # llama.cpp Monitor
 
+[![CI](https://github.com/aleksandrreva-eng/llama-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/aleksandrreva-eng/llama-monitor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/aleksandrreva-eng/llama-monitor?label=release)](https://github.com/aleksandrreva-eng/llama-monitor/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aleksandrreva-eng/llama-monitor/total)](https://github.com/aleksandrreva-eng/llama-monitor/releases)
@@ -103,8 +104,19 @@ export PATH="$HOME/.cargo/bin:$PATH"
 cargo test
 ```
 
-Покрывают парсинг адаптеров (Prometheus/JSON, контекст, скорости, модель) и
-логику калькулятора (статусы, сглаживание, определение устаревания) — 63 теста.
+Покрывают парсинг адаптеров (Prometheus/JSON, контекст, скорости, модель), логику
+калькулятора (статусы, сглаживание, определение устаревания), миграцию настроек и
+wire-формат, общий с фронтендом — 103 теста.
+
+Статические проверки фронтенда (неправильное использование store, паритет ключей
+i18n) запускаются отдельно:
+
+```bash
+npm run check      # check:stores + check:i18n
+```
+
+Обе входят и в `npm run build`, а всё перечисленное выше выполняется в CI
+(`.github/workflows/ci.yml`) на каждый push.
 
 
 ---
@@ -124,9 +136,13 @@ cargo test
 - **Тема, прозрачность, режим (компактный/развёрнутый), автозапуск, always-on-top, трей, логирование.**
 - **API-ключ** — опционально, хранится в настройках и **не попадает в логи**.
 
-Настройки сохраняются в файл `llama-monitor-settings.json` рядом с исполняемым файлом.
-Файлы старых версий подхватываются автоматически: недостающие поля берут значения
-по умолчанию, а устаревший `base_path: "/v1"` мигрируется в пустой корень.
+Настройки сохраняются в `%LOCALAPPDATA%\llama-monitor\llama-monitor-settings.json`
+(та же папка, что и лог). Портативная копия использует файл рядом с `.exe`, если
+каталог данных недоступен. Запись атомарная (временный файл + rename), поэтому
+сбой в момент сохранения не может обрезать файл. Файлы старых версий
+подхватываются автоматически: недостающие поля берут значения по умолчанию,
+устаревший `base_path: "/v1"` мигрируется в пустой корень, а старые поля
+одиночного сервера превращаются в первую запись списка `servers`.
 
 ---
 

@@ -6,7 +6,7 @@ in headless Chrome, mounts it, and fires `tauri://resize` events. The page write
 JSON result into <pre id="result">; we read it from --dump-dom output.
 
 Usage:
-    python scripts/run_resize_harness.py [--bundle index-CjsjWIF4.js] [--chrome PATH]
+    python dev/run_resize_harness.py [--bundle index-CjsjWIF4.js] [--chrome PATH]
 Exit: 0 = no frontend error / no throw, 1 = error detected or could not start.
 """
 
@@ -22,7 +22,7 @@ import socketserver
 import os
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-HTML = "verify_resize/index.html"
+HTML = "dev/verify_resize/index.html"
 
 DEFAULT_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
@@ -61,7 +61,7 @@ def main():
     say("bundle   : " + args.bundle)
     say("url      : " + url)
 
-    ud = os.path.join(ROOT, "verify_resize", "chrome-profile")
+    ud = os.path.join(ROOT, "dev", "verify_resize", "chrome-profile")
     os.makedirs(ud, exist_ok=True)
     proc = subprocess.run(
         [
